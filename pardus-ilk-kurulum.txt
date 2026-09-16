@@ -8,6 +8,13 @@ Aşağıdaki komutları TEK TEK, sırayla çalıştır. Kod klasörünün yolu
 farklıysa (/opt/tahtakilit değilse) ilk satırdaki yolu değiştir.
 
 ------------------------------------------------------------
+0) Git kurulu değilse (ilk komut "git: komut bulunamadı" derse):
+------------------------------------------------------------
+sudo apt update && sudo apt install -y git
+
+(etapadmin şifresini soracak)
+
+------------------------------------------------------------
 cd /opt/tahtakilit
 git init -b main
 git remote add origin https://github.com/mstogluk/tahta-kilit-program.git
