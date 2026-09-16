@@ -86,53 +86,46 @@ Windows tarafında değişen bir şeyi Pardus'a çekmek için:
 
 
 ============================================================
-CLAUDE CODE'U PARDUS'A KURMAK (bir kereliğine)
+CLAUDE DESKTOP'I PARDUS'A KURMAK (bir kereliğine)
 ============================================================
 
-NOT: Bu adımlar İNTERNET gerektirir (paket indirme + giriş yapma).
-Bu makinenin wifi'si sorunluysa (devir notundaki MT7601U USB
-sorunu), önce interneti (ethernet ile) sağlamış olman lazım.
+NOT: Bu adımlar İNTERNET gerektirir. Debian 12 (bookworm)+ / Ubuntu
+22.04+ gerekiyor — Pardus ETAP23, Debian 12.3 tabanlı olduğu için
+uyumlu (doğrulandı, 2026-09-16).
 
-Sudo/admin YETKİSİ GEREKMEZ — her şey kullanıcının kendi ev
-dizinine kurulacak (nvm yöntemiyle).
-
-------------------------------------------------------------
-1) Node.js kurulumu (nvm ile, sudo gerektirmez):
-------------------------------------------------------------
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-
-Bu komuttan sonra terminali kapatıp yeniden aç (ya da şunu çalıştır):
-    source ~/.bashrc
+Sudo/admin (etapadmin) şifresi istenecek — apt deposu eklemek için.
 
 ------------------------------------------------------------
-2) Node LTS sürümünü kur:
+1) Anthropic'in resmi apt deposunu ekle ve kur:
 ------------------------------------------------------------
-nvm install --lts
-
-Kontrol et (bir sürüm numarası yazmalı, hata vermemeli):
-    node -v
-    npm -v
+sudo curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
+sudo apt update && sudo apt install claude-desktop
 
 ------------------------------------------------------------
-3) Claude Code CLI'ı kur:
+2) Aç ve giriş yap:
 ------------------------------------------------------------
-npm install -g @anthropic-ai/claude-code
+Uygulamalar menüsünden "Claude" ara, ya da terminalde:
+    claude-desktop
+
+İlk açılışta seni giriş yapmaya yönlendirecek — Windows'taki Claude
+Code'da kullandığın hesapla (aynı e-posta) giriş yap.
 
 ------------------------------------------------------------
-4) Giriş yap ve projeyi aç:
+3) Güncelleme:
 ------------------------------------------------------------
-cd /opt/tahtakilit
-claude
-
-İlk çalıştırmada seni giriş yapmaya yönlendirecek (tarayıcıda ya da
-bir kod ile) — bu Claude Code'da kullandığın hesapla (aynı e-posta)
-giriş yap.
+Normal sistem güncellemesiyle birlikte gelir:
+    sudo apt update && sudo apt upgrade
 
 ------------------------------------------------------------
 NOT: Bu, buradaki (Windows'taki) sohbetin AYNISI DEĞİL.
 ------------------------------------------------------------
-Pardus'ta açılan Claude Code, bu konuşmanın geçmişini bilmez —
+Pardus'ta açılan Claude, bu konuşmanın geçmişini bilmez —
 tamamen yeni/ayrı bir oturum olur. Proje klasörünü (git reposu
 sayesinde) görebilir ama bu sohbette konuştuklarımızı görmez.
 Gerekirse ona devam-notu.md dosyasını okumasını söyleyerek özet
 context verebilirsin (tıpkı bu sohbete başlarken yaptığın gibi).
+
+------------------------------------------------------------
+NOT: Daha önce npm/CLI yöntemi denendiyse, o da çalışır ama artık
+gerekli değil — masaüstü uygulaması hepsini içeriyor.
