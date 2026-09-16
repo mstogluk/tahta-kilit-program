@@ -45,3 +45,56 @@ Kod değişikliklerini GitHub'a göndermek için:
 
 Windows tarafında değişen bir şeyi Pardus'a çekmek için:
     ./github_al.sh
+
+
+============================================================
+CLAUDE CODE'U PARDUS'A KURMAK (bir kereliğine)
+============================================================
+
+NOT: Bu adımlar İNTERNET gerektirir (paket indirme + giriş yapma).
+Bu makinenin wifi'si sorunluysa (devir notundaki MT7601U USB
+sorunu), önce interneti (ethernet ile) sağlamış olman lazım.
+
+Sudo/admin YETKİSİ GEREKMEZ — her şey kullanıcının kendi ev
+dizinine kurulacak (nvm yöntemiyle).
+
+------------------------------------------------------------
+1) Node.js kurulumu (nvm ile, sudo gerektirmez):
+------------------------------------------------------------
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+Bu komuttan sonra terminali kapatıp yeniden aç (ya da şunu çalıştır):
+    source ~/.bashrc
+
+------------------------------------------------------------
+2) Node LTS sürümünü kur:
+------------------------------------------------------------
+nvm install --lts
+
+Kontrol et (bir sürüm numarası yazmalı, hata vermemeli):
+    node -v
+    npm -v
+
+------------------------------------------------------------
+3) Claude Code CLI'ı kur:
+------------------------------------------------------------
+npm install -g @anthropic-ai/claude-code
+
+------------------------------------------------------------
+4) Giriş yap ve projeyi aç:
+------------------------------------------------------------
+cd /opt/tahtakilit
+claude
+
+İlk çalıştırmada seni giriş yapmaya yönlendirecek (tarayıcıda ya da
+bir kod ile) — bu Claude Code'da kullandığın hesapla (aynı e-posta)
+giriş yap.
+
+------------------------------------------------------------
+NOT: Bu, buradaki (Windows'taki) sohbetin AYNISI DEĞİL.
+------------------------------------------------------------
+Pardus'ta açılan Claude Code, bu konuşmanın geçmişini bilmez —
+tamamen yeni/ayrı bir oturum olur. Proje klasörünü (git reposu
+sayesinde) görebilir ama bu sohbette konuştuklarımızı görmez.
+Gerekirse ona devam-notu.md dosyasını okumasını söyleyerek özet
+context verebilirsin (tıpkı bu sohbete başlarken yaptığın gibi).
