@@ -15,6 +15,14 @@ sudo apt update && sudo apt install -y git
 (etapadmin şifresini soracak)
 
 ------------------------------------------------------------
+0.5) "erişim engellendi" / permission denied hatası alırsan:
+------------------------------------------------------------
+(/opt/tahtakilit klasörü root'a ait olabilir, önceki sudo kurulumdan
+kalma — sahipliği kendi kullanıcına al)
+
+sudo chown -R $(whoami):$(whoami) /opt/tahtakilit
+
+------------------------------------------------------------
 cd /opt/tahtakilit
 git init -b main
 git remote add origin https://github.com/mstogluk/tahta-kilit-program.git
