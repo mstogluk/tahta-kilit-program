@@ -1,0 +1,47 @@
+PARDUS MAKİNESİNDE BİR KERELİĞİNE ÇALIŞTIRILACAK KOMUTLAR
+============================================================
+
+Bu dosyayı Pardus makinesine bir şekilde ulaştır (USB, e-posta, vs.)
+ya da içeriğini kopyalayıp Pardus'taki terminale yapıştır.
+
+Aşağıdaki komutları TEK TEK, sırayla çalıştır. Kod klasörünün yolu
+farklıysa (/opt/tahtakilit değilse) ilk satırdaki yolu değiştir.
+
+------------------------------------------------------------
+cd /opt/tahtakilit
+git init -b main
+git remote add origin https://github.com/mstogluk/tahta-kilit-program.git
+git pull origin main
+chmod +x github_gonder.sh github_al.sh
+------------------------------------------------------------
+
+Not: "git pull origin main" komutu sana GitHub kullanıcı adı ve
+şifre soracak. Şifre yerine bir "Personal Access Token" (PAT)
+girmen gerekiyor (GitHub artık düz şifre kabul etmiyor).
+
+Token oluşturmak için:
+1. Tarayıcıda (herhangi bir bilgisayarda) github.com'a giriş yap.
+2. Sağ üstteki profil fotona tıkla > Settings
+3. En altta sol menüde: Developer settings
+4. Personal access tokens > Tokens (classic) > Generate new token (classic)
+5. "repo" kutucuğunu işaretle, süre seç (örn. 90 gün ya da No expiration)
+6. Generate token'a bas, çıkan uzun kodu KOPYALA (bir daha gösterilmiyor!)
+7. Pardus terminalinde şifre sorduğunda bu kodu yapıştır (kullanıcı adı
+   olarak yine GitHub kullanıcı adını gir: mstogluk)
+
+Bu token'ı bir yere not al, her push/pull'da tekrar tekrar sorulmaması
+için Pardus'ta şu komutla bir kereliğine kaydedebilirsin:
+------------------------------------------------------------
+git config --global credential.helper store
+------------------------------------------------------------
+(Bu satırı yukarıdaki 5 komuttan ÖNCE çalıştırırsan, ilk girdiğin
+token diskte düz metin olarak saklanır ve bir daha sorulmaz.)
+
+------------------------------------------------------------
+İLK KURULUM BİTTİKTEN SONRA, HER SEFERİNDE:
+------------------------------------------------------------
+Kod değişikliklerini GitHub'a göndermek için:
+    ./github_gonder.sh
+
+Windows tarafında değişen bir şeyi Pardus'a çekmek için:
+    ./github_al.sh
