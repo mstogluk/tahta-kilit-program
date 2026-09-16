@@ -53,6 +53,29 @@ git config --global credential.helper store
 token diskte düz metin olarak saklanır ve bir daha sorulmaz.)
 
 ------------------------------------------------------------
+DAHA KALICI ÇÖZÜM: SSH ANAHTARI (token hatırlamana hiç gerek kalmaz)
+------------------------------------------------------------
+Token'ı unutma/kaybetme derdi olmasın istersen SSH anahtarı kur:
+
+1) Anahtar üret (her soruya Enter'a basıp geçebilirsin):
+       ssh-keygen -t ed25519 -C "mstogluk@gmail.com"
+
+2) Açık anahtarı göster:
+       cat ~/.ssh/id_ed25519.pub
+
+3) Çıkan satırı kopyala. GitHub'da: profil fotosu > Settings >
+   sol menüde "SSH and GPG keys" > "New SSH key" > yapıştır > Add SSH key
+
+4) Repo adresini SSH'a çevir:
+       git remote set-url origin git@github.com:mstogluk/tahta-kilit-program.git
+
+5) Test et:
+       ssh -T git@github.com
+   "Hi mstogluk! ..." yazısı görürsen tamamdır.
+
+Bundan sonra git push/pull hiçbir şey sormaz.
+
+------------------------------------------------------------
 İLK KURULUM BİTTİKTEN SONRA, HER SEFERİNDE:
 ------------------------------------------------------------
 Kod değişikliklerini GitHub'a göndermek için:
