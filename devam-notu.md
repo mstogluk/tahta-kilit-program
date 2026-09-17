@@ -94,30 +94,20 @@ Dosyalar (repo kökünde):
 
 **Henüz yapılmadı:**
 - Cython ile native binary'ye derleme (kod koruması kararı verildi ama build adımı henüz eklenmedi).
-- Gerçek Pardus donanımında test (USB seri no okuma, karekod okunabilirliği, GTK render'ı, kamera ile QR tarama) — sadece mantık/algoritma seviyesinde doğrulandı.
 - İptal listesi (`iptal.txt`) üretme/yönetme komutu admin_araci.py'de henüz yok (dosya formatı ve board tarafı doğrulaması hazır).
 - Okul bilgileri/ders-teneffüs saatleri özelliği (kapsam dışı, aşağıda).
+- `mobil-anahtar.html`'in gerçek bir tarayıcıda (localStorage açık, telefon/masaüstü fark etmez) uçtan uca denenmesi — sadece hesaplama mantığı test edildi, kaydetme/yükleme akışı henüz gerçek bir tarayıcıda görülmedi.
 
-## Oturum sonu durumu (2026-09-16 akşam) — nereden devam edilecek
+## Gerçek Pardus donanımında test edildi — BAŞARILI (2026-09-17)
 
-**Bugün yapılanların özeti:**
-- GitHub altyapısı kuruldu (`mstogluk/tahta-kilit-program`, private), Pardus'a bootstrap edildi, kod (`lockscreen.py`, `run.sh`) oraya push edildi.
-- Faz 2'nin tüm kodu yazıldı: `keyauth.py`, `lockscreen.py` (yeniden), `admin_araci.py`, `mobil-anahtar.html`, `install.sh`, `.gitignore`.
-- Mobil akış meydan okuma-cevap (challenge-response) yöntemine geçirildi, sınırsız öğretmen destekleniyor (bkz. yukarıdaki "Faz 2" bölümü).
-- **Kripto mantığı uçtan uca doğrulandı** (bu Windows makinesinde, `pip install cryptography qrcode Pillow` ile): nonce üret → telefon kodu üret → tahta doğrula → yanlış kod/tekrar kullanım reddediliyor, hepsi çalıştı. Gerçek bir test öğretmeni üretildi: kod "OMBOCAARMKCUBR4H2EXPSM576JHLQNAU|001|Test Ogretmen 2", karekodu `admin-gizli/test_karekod.png`'de duruyor (bu dosyalar git'e gitmiyor, sadece yerel test).
-- JS (mobil-anahtar.html) ve Python (keyauth.py) hesaplamaları birebir çapraz test edildi.
+Pardus'taki ayrı Claude Desktop oturumu `pardus-gorevler.md`'yi uygulayıp gerçek donanımda test etti:
+- **Mobil Anahtar**: doğru kod açıyor OK; eski nonce'tan üretilen kod reddediliyor OK; 3 yanlış denemeden sonra 15sn kilitlenip sonra tekrar açılıyor OK.
+- **USB Anahtar**: gerçek bir USB bellekle (SanDisk Cruzer Blade, seri `4C530001310920108400`) test edildi, takılınca ~2sn içinde otomatik açılıyor OK, yanlış/kopyalanmış seri no ile reddediliyor OK.
+- Dosyayı kopyalayıp başka USB'ye taşıma + isim/seri alanlarını elle değiştirme saldırısı da burada (Windows'ta) ayrıca simüle edilip doğrulandı: imza her durumda geçersiz kılıyor, hiçbir tahrifat işe yaramıyor.
 
-**Henüz test edilmedi / yapılmadı:**
-- Gerçek Pardus donanımında hiçbir şey çalıştırılmadı (GTK render, karekod okunabilirliği, kamera taraması, USB seri no okuma) — sadece algoritma/mantık seviyesinde doğrulandı.
-- `mobil-anahtar.html`'in gerçek bir tarayıcıda (localStorage çalışır durumda) test edilmesi lazım — bu oturumdaki önizleme paneli localStorage'ı engelliyordu, test yarım kaldı.
-- Cython ile derleme (kod koruması) henüz yapılmadı.
-- İptal listesi üretme komutu admin_araci.py'de yok.
+**Bulunan ve düzeltilen bug**: `keyauth.usb_seri_no_oku`, seri numarasını `/sys/block/<aygıt>/device/serial` gibi sysfs yollarından okumaya çalışıyordu — normal USB bellekler (USB mass storage) bunu o yoldan sunmadığı için fonksiyon hep `None` dönüyordu, USB Anahtar akışı hiç çalışmıyordu. **Düzeltme** (Pardus tarafında yapıldı, git'e geldi): `udevadm info --query=property --name <aygıt>` çalıştırıp `ID_SERIAL_SHORT` özelliğini okuyacak şekilde değiştirildi — bu, USB depolama aygıtlarının gerçek seri no'sunu tuttuğu doğru yer.
 
-**Devam etme planı (kullanıcı evde, Pardus makinesi yok, Windows laptop var):**
-- Sanal makine (VirtualBox/VMware) ile Pardus kurup test etmek **uygun bir seçenek** — GTK arayüzü, mobil akış, admin aracı sanal makinede sorunsuz çalışır (gerçek Linux çekirdeği/sysfs kullanıyor).
-- Tek incelik: **USB Anahtar testi** için gerçek bir USB belleği sanal makineye "USB passthrough" ile bağlamak gerekiyor (VirtualBox: Ayarlar > USB) — mobil akış ve genel arayüz testi için buna hiç gerek yok.
-- Okuldaki asıl Pardus makinesi (`/opt/tahtakilit`) hâlâ ayrı duruyor, oradaki Claude Desktop oturumu ayrı bir konuşma — bu notu okuyarak devam edebilir.
-- `pardus-gorevler.md` dosyası hâlâ güncel test listesini içeriyor, sanal makinede de aynı adımlar uygulanabilir.
+**Sonuç**: Faz 2'nin çekirdek kilit açma mekanizması (USB + Mobil, ikisi de) artık gerçek donanımda çalıştığı doğrulanmış durumda. Kalan işler yukarıdaki "Henüz yapılmadı" listesinde.
 
 ## Ertelenen / belirsiz konular (kapsam dışı, şimdilik)
 - EBA karekodu ile doğrudan tahtayı açma: resmi bir API olup olmadığı belirsiz, araştırılmadı, muhtemelen mümkün değil.
