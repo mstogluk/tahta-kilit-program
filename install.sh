@@ -41,6 +41,11 @@ else
   echo "UYARI: tahta-config/mobil_gizli.key yok — Mobil Anahtar çalışmayacak."
 fi
 
+if [ -f "$BURASI/tahta-config/iptal.txt" ]; then
+  cp "$BURASI/tahta-config/iptal.txt" /etc/tahtakilit/iptal.txt
+  echo "iptal.txt kopyalandı."
+fi
+
 chmod +x "$BURASI/lockscreen.py" "$BURASI/run.sh"
 
 KULLANICI_EV=$(getent passwd "$KULLANICI" | cut -d: -f6)

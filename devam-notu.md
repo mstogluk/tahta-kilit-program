@@ -94,9 +94,12 @@ Dosyalar (repo kökünde):
 
 **Henüz yapılmadı:**
 - Cython ile native binary'ye derleme (kod koruması kararı verildi ama build adımı henüz eklenmedi).
-- İptal listesi (`iptal.txt`) üretme/yönetme komutu admin_araci.py'de henüz yok (dosya formatı ve board tarafı doğrulaması hazır).
 - Okul bilgileri/ders-teneffüs saatleri özelliği (kapsam dışı, aşağıda).
-- `mobil-anahtar.html`'in gerçek bir tarayıcıda (localStorage açık, telefon/masaüstü fark etmez) uçtan uca denenmesi — sadece hesaplama mantığı test edildi, kaydetme/yükleme akışı henüz gerçek bir tarayıcıda görülmedi.
+- İptal güncellemesinin tahtalara ulaşması şu an **manuel** — `iptal.txt` değişince `install.sh`'in yeniden çalıştırılması gerekiyor. Otomatik senkronizasyon (GitHub'dan periyodik çekme) henüz kurulmadı, bkz. "Faz 2" bölümündeki senkronizasyon planı.
+
+**Test edildi ve doğrulandı (2026-09-17):**
+- `mobil-anahtar.html` gerçek bir tarayıcı ortamında (yerel HTTP sunucusu üzerinden) test edildi — kurulum/kayıt, kalıcılık (sayfa yenileme sonrası tekrar sormuyor), ve kod üretme Python'daki gerçek `keyauth.mobil_cevap_dogrula` ile çapraz doğrulandı. Sıfırlama butonu koda bakılınca doğru ama native onay penceresi otomasyon aracıyla test edilemedi (küçük, önemsiz bir kısıt).
+- **İptal listesi komutları eklendi ve test edildi**: `admin_araci.py iptal-ekle-mobil <kod>`, `iptal-ekle-usb "<ad>" <seri>`, `iptal-listele`. `tahta-config/iptal.txt`'e yazıyor (git'e gidecek, `install.sh` artık bunu da `/etc/tahtakilit/`'e kopyalıyor). Board tarafında hem mobil hem USB akışında iptal edilmiş kayıtların reddedildiği doğrulandı.
 
 ## Gerçek Pardus donanımında test edildi — BAŞARILI (2026-09-17)
 
