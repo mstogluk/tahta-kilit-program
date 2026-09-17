@@ -35,8 +35,9 @@ OKUL_ACIK_KEY = os.path.join(ETC_DIR, "okul_acik.key")
 MOBIL_GIZLI_KEY = os.path.join(ETC_DIR, "mobil_gizli.key")
 TAHTA_ID_FILE = os.path.join(ETC_DIR, "tahta_id.txt")
 IPTAL_FILE = os.path.join(ETC_DIR, "iptal.txt")
+KULLANIM_LOG_FILE = os.path.join(ETC_DIR, "kullanim.log")
 
-USB_ANAHTAR_DOSYA_ADI = "tahtakilit_anahtar.json"
+USB_ANAHTAR_DOSYA_ADI = ".tahtakilit_anahtar.json"  # baştaki nokta: Linux'ta gizli dosya
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +152,7 @@ def usb_seri_no_oku(aygit_yolu):
 # gerektirmez.
 # ---------------------------------------------------------------------------
 
-OGRETMEN_KODU_UZUNLUK = 3  # 000-999, 1000 öğretmene kadar çakışmasız
+OGRETMEN_KODU_UZUNLUK = 4  # 0000-9999, 10.000 kayda kadar (iptal edilenler dahil, kod tekrar kullanılmıyor)
 CEVAP_UZUNLUK = 6
 
 
@@ -172,30 +173,34 @@ def _ogretmen_anahtari_turet(master_gizli_bytes, ogretmen_kodu):
 
 
 def mobil_cevap_uret(master_gizli_b32, ogretmen_kodu, nonce):
-    """Telefon/web tarafında çağrılır. Ekranda gösterilecek tam kodu döner."""
+    """Telefon/web tarafında çağrılır. Ekranda gösterilecek kodu (sadece
+    CEVAP_UZUNLUK haneli) döner - öğretmen kodu ayrıca eklenmez, tahta
+    girilen kodu doğrularken hangi öğretmen kodunun uyduğunu kendi bulur.
+    """
     master_bytes = base64.b32decode(master_gizli_b32 + "=" * (-len(master_gizli_b32) % 8))
     kisisel_anahtar = _ogretmen_anahtari_turet(master_bytes, ogretmen_kodu)
-    cevap = _kisa_hmac(kisisel_anahtar, nonce)
-    return f"{ogretmen_kodu}{cevap}"
+    return _kisa_hmac(kisisel_anahtar, nonce)
 
 
 def mobil_cevap_dogrula(master_gizli_b32, girilen_deger, nonce):
-    """Tahta tarafında çağrılır. Geçerliyse öğretmen kodunu, değilse None döner."""
-    if len(girilen_deger) != OGRETMEN_KODU_UZUNLUK + CEVAP_UZUNLUK or not girilen_deger.isdigit():
-        return None
-
-    ogretmen_kodu = girilen_deger[:OGRETMEN_KODU_UZUNLUK]
-    girilen_cevap = girilen_deger[OGRETMEN_KODU_UZUNLUK:]
-
-    if _iptal_edilmis_mi(ogretmen_kodu):
+    """Tahta tarafında çağrılır. Girilen CEVAP_UZUNLUK haneli kodun hangi
+    öğretmene ait olduğunu, olası tüm öğretmen kodlarını (000-999, en
+    fazla 1000 ihtimal) deneyerek bulur - bu, milisaniyeden kısa sürer.
+    Geçerliyse öğretmen kodunu, değilse None döner.
+    """
+    if len(girilen_deger) != CEVAP_UZUNLUK or not girilen_deger.isdigit():
         return None
 
     master_bytes = base64.b32decode(master_gizli_b32 + "=" * (-len(master_gizli_b32) % 8))
-    kisisel_anahtar = _ogretmen_anahtari_turet(master_bytes, ogretmen_kodu)
-    beklenen_cevap = _kisa_hmac(kisisel_anahtar, nonce)
 
-    if hmac.compare_digest(beklenen_cevap, girilen_cevap):
-        return ogretmen_kodu
+    for n in range(10**OGRETMEN_KODU_UZUNLUK):
+        ogretmen_kodu = str(n).zfill(OGRETMEN_KODU_UZUNLUK)
+        kisisel_anahtar = _ogretmen_anahtari_turet(master_bytes, ogretmen_kodu)
+        beklenen_cevap = _kisa_hmac(kisisel_anahtar, nonce)
+        if hmac.compare_digest(beklenen_cevap, girilen_deger):
+            if _iptal_edilmis_mi(ogretmen_kodu):
+                return None
+            return ogretmen_kodu
     return None
 
 
@@ -220,6 +225,21 @@ def _iptal_edilmis_mi(kayit):
 # ---------------------------------------------------------------------------
 # Tahtada kayıtlı ayarları okuma yardımcıları
 # ---------------------------------------------------------------------------
+
+def kullanim_logla(tahta_id, yontem, kimlik):
+    """Kilit açıldığında çağrılır. Ekranda hiç gösterilmeyen kimlik burada
+    (sadece diskte) kayıt altına alınır - ileride istatistik istenirse
+    bu dosyadan çıkarılabilir.
+    """
+    import datetime
+
+    satir = f"{datetime.datetime.now().isoformat()} | {tahta_id} | {yontem} | {kimlik}\n"
+    try:
+        with open(KULLANIM_LOG_FILE, "a") as f:
+            f.write(satir)
+    except OSError:
+        pass  # loglama basarisiz olsa bile kilit acma islemini engellemesin
+
 
 def dosyadan_oku(yol):
     try:

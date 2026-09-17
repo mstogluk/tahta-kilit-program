@@ -1,5 +1,51 @@
 # Pardus'ta Yapılacaklar / Test Edilecekler
 
+## YENİ (2026-09-17, akşam) — admin_gui.py eklendi, Linux tarafı hiç test edilmedi
+
+Windows'ta (Tkinter + WMI ile USB tespiti) uçtan uca test edildi, çalışıyor.
+Linux/Pardus tarafındaki USB tespiti (`lsblk` ile) **hiç test edilmedi** —
+admin bu aracı büyük ihtimalle Windows'ta kullanacak ama yine de çalışsın:
+
+```bash
+sudo apt install -y python3-tk   # Tkinter Pardus'ta ayrı paket olabilir
+cd /opt/tahtakilit
+python3 admin_gui.py
+```
+
+Test et: "Anahtarlar" > "USB Anahtar" sekmesinde takılı bir USB gerçekten
+listeleniyor mu (seri no dahil), "Anahtar Oluştur" ile dosya gerçekten
+USB köküne `.tahtakilit_anahtar.json` (gizli) olarak yazılıyor mu.
+
+## YENİ (2026-09-17, öğleden sonra) — arayüz değişikliği, tekrar test gerekiyor
+
+- `lockscreen.py` baştan yazıldı: artık fiziksel klavye ile kod girilmiyor,
+  ekranda dokunmatik bir tuş takımı (0-9 + Sil) var — "Karekod Oluştur"a
+  basınca çıkıyor, 45 saniye içinde kullanılmazsa karekod+tuş takımı
+  otomatik gizleniyor (tekrar "Karekod Oluştur" gerekiyor).
+- Mobil kod artık **6 haneli** (öğretmen kodu ayrıca yazılmıyor, tahta
+  kendi buluyor — bkz. `keyauth.mobil_cevap_dogrula`).
+- Öğretmen kodu uzunluğu 3'ten 4'e çıktı (`OGRETMEN_KODU_UZUNLUK`).
+- `mobil-anahtar.html` sadeleşti: elle giriş alanları ve "Anahtarı
+  değiştir" butonu kaldırıldı, sadece "Karekod Tara" butonu kaldı.
+- `keyauth.kullanim_logla` eklendi: kilit her açıldığında
+  `/etc/tahtakilit/kullanim.log`'a kimlik (isim yerine sadece kod/isim)
+  kaydediliyor, ekranda hiç görünmüyor.
+
+**Test et:**
+1. `python3 admin_araci.py mobil-anahtar-uret "Test Ogretmen"` ile yeni
+   (4 haneli) bir kod üret, telefonuna taratıp kur.
+2. Tahtada "Karekod Oluştur"a bas, ekranda dokunmatik tuş takımının
+   çıktığını doğrula. Fiziksel klavyeden rakam basmanın **hiçbir etkisi
+   olmaması** lazım (sadece ekrandaki butonlar çalışmalı).
+3. Telefonla tara, üretilen 6 haneli kodu **ekrandaki tuş takımıyla**
+   gir — 6. rakamda otomatik denemesi lazım (ayrı bir "Aç" butonuna
+   basmaya gerek yok).
+4. "Karekod Oluştur"a bas, **45 saniye hiçbir şey yapma** — karekod ve
+   tuş takımının otomatik kaybolduğunu doğrula.
+5. `cat /etc/tahtakilit/kullanim.log` ile kilit açma kaydının doğru
+   yazıldığını kontrol et.
+
+
 Bu dosyayı Windows tarafında ben (Claude) güncelliyorum. Sen `git pull`
 (ya da `./github_al.sh`) ile çektikten sonra, Pardus'taki Claude'a
 "pardus-gorevler.md dosyasını oku ve uygula" diyebilirsin.
@@ -36,8 +82,10 @@ sadece "Karekod Oluştur" butonuna basılınca üretiyor.
    ```
    Bu `tahta-config/okul_acik.key` ve `tahta-config/mobil_gizli.key`
    üretecek — bunları git'e gönder (`./github_gonder.sh`) ki `install.sh`
-   tahtalara kopyalayabilsin. `admin-gizli/okul_ozel.key` ASLA git'e gitmemeli
-   (`.gitignore`'da zaten hariç tutuldu, kontrol et).
+   tahtalara kopyalayabilsin. Bu komut artık önce bir yönetici şifresi
+   soracak (ilk seferde belirlersin) — özel anahtar `admin-gizli/veri.enc`
+   içinde şifreli tutuluyor, ASLA git'e gitmemeli (`.gitignore`'da zaten
+   hariç tutuldu, kontrol et).
 
 3. **Kurulumu çalıştır**:
    ```bash
@@ -64,7 +112,7 @@ sadece "Karekod Oluştur" butonuna basılınca üretiyor.
      (ya da terminaldeki `master_gizli|kod|isim` satırını elle yapıştır).
    - Tahtada **"Karekod Oluştur"** butonuna bas — QR o an üretilir.
    - Telefon uygulamasında "Karekodu Tara" ile bu QR'ı tara.
-   - Uygulamanın ürettiği (öğretmen kodu + cevap, toplam 9 haneli) kodu
+   - Uygulamanın ürettiği (6 haneli) kodu
      tahtaya gir, açılması lazım.
    - **Ayrıca test et**: "Karekod Oluştur"a tekrar bas (yeni nonce), ESKİ
      QR'dan üretilmiş kod artık çalışMAMALI.
@@ -78,7 +126,7 @@ sadece "Karekod Oluştur" butonuna basılınca üretiyor.
      ```bash
      python3 admin_araci.py usb-anahtar-uret "Test Ogretmen" <SERI_NO> /tmp/anahtar.json
      ```
-   - `/tmp/anahtar.json` dosyasını USB'nin köküne `tahtakilit_anahtar.json`
+   - `/tmp/anahtar.json` dosyasını USB'nin köküne `.tahtakilit_anahtar.json`
      adıyla kopyala.
    - USB'yi tahtaya (bu makineye) tak, birkaç saniye içinde kilidin
      otomatik açılması lazım.

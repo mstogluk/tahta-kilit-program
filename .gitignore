@@ -1,5 +1,6 @@
 # Gerçek özel anahtar - ASLA git'e gitmemeli, sadece admin'in kendi bilgisayarında kalır
 admin-gizli/
+*.enc
 
 # tahta-config/ klasörü BİLEREK git'e gidiyor (okul_acik.key, mobil_gizli.key) -
 # tahtaların bunları kurulumda alması için gerekli, bkz. devam-notu.md
@@ -9,3 +10,8 @@ pin.txt
 
 __pycache__/
 *.pyc
+
+# PyInstaller derleme çıktıları - kaynaktan yeniden üretilebilir, repoya gitmesin
+build/
+dist/
+*.spec

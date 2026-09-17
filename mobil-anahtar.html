@@ -42,26 +42,21 @@
 <h1>Tahta Kilit — Mobil Anahtar</h1>
 
 <div id="kurulumEkrani" class="kutu">
-  <p>İlk kullanım: admin'in sana verdiği karekodu tara (ya da elle gir).</p>
+  <p>İlk kullanım: admin'in sana verdiği karekodu tara (ya da anahtarı elle yapıştır).</p>
   <button onclick="kameraAc('kurulum')">Karekod Tara</button>
-  <input id="gizliGiris" placeholder="ya da elle gir">
+  <input id="gizliGiris" placeholder="ya da anahtarı buraya yapıştır">
   <button class="ikincil" onclick="gizliKaydet()">Kaydet</button>
   <p id="kurulumHata" class="hata"></p>
 </div>
 
 <div id="anaEkran" class="kutu gizli">
-  <p id="ogretmenBaslik" style="color:#888;font-size:13px;"></p>
   <p>Tahtadaki karekodu tara:</p>
   <button onclick="kameraAc('kullanim')">Karekodu Tara</button>
-  <input id="tahtaVerisiGiris" placeholder="ya da elle gir: tahta_id:nonce">
-  <button class="ikincil" onclick="tahtaVerisiManuelOnayla()">Kod Üret</button>
 
   <div id="kodBolumu" class="gizli">
     <p style="font-size:13px;color:#888;">Bu kodu tahtaya girin:</p>
     <div id="kod">---------</div>
   </div>
-
-  <button class="ikincil" onclick="anahtarSifirla()">Anahtarı değiştir</button>
 </div>
 
 <video id="kamera" autoplay playsinline muted class="kutu"></video>
@@ -149,8 +144,7 @@ function kisaHmac(anahtarBytes, mesajStr, basamak) {
 function mobilCevapUret(masterB32, ogretmenKodu, nonce) {
   const masterBytes = base32Decode(masterB32);
   const kisiselAnahtar = hmacSha1(masterBytes, strToBytes(ogretmenKodu));
-  const cevap = kisaHmac(kisiselAnahtar, nonce, 6);
-  return ogretmenKodu + cevap;
+  return kisaHmac(kisiselAnahtar, nonce, 6);
 }
 
 // ---- Sayfa mantığı ----
@@ -163,11 +157,6 @@ function kayitliMi() {
 function ekranlariGuncelle() {
   document.getElementById("kurulumEkrani").classList.toggle("gizli", kayitliMi());
   document.getElementById("anaEkran").classList.toggle("gizli", !kayitliMi());
-  if (kayitliMi()) {
-    const adi = localStorage.getItem("ogretmen_adi") || "";
-    document.getElementById("ogretmenBaslik").textContent =
-      adi ? `${adi} (kod: ${localStorage.getItem("ogretmen_kodu")})` : `Öğretmen kodu: ${localStorage.getItem("ogretmen_kodu")}`;
-  }
 }
 
 // Admin'den gelen kurulum verisi format: mobil_gizli|ogretmen_kodu|ogretmen_adi
@@ -192,19 +181,6 @@ function gizliKaydet() {
   kurulumVerisiniIsle(deger);
 }
 
-function anahtarSifirla() {
-  if (confirm("Kayıtlı anahtarı silmek istediğine emin misin?")) {
-    localStorage.removeItem("mobil_gizli");
-    localStorage.removeItem("ogretmen_kodu");
-    localStorage.removeItem("ogretmen_adi");
-    ekranlariGuncelle();
-  }
-}
-
-function tahtaVerisiManuelOnayla() {
-  const deger = document.getElementById("tahtaVerisiGiris").value.trim();
-  if (deger) kodUret(deger);
-}
 
 // tahtaVerisi format: tahta_id:nonce
 function kodUret(tahtaVerisi) {
@@ -227,7 +203,7 @@ function kodUret(tahtaVerisi) {
 //      'kullanim' -> taranan değer tahta kimliği olarak kullanılır
 async function kameraAc(mod) {
   if (!("BarcodeDetector" in window)) {
-    alert("Bu tarayıcı otomatik tarama desteklemiyor, elle gir.");
+    alert("Bu tarayıcı otomatik karekod taramayı desteklemiyor. Güncel bir Chrome/Android tarayıcısı dene.");
     return;
   }
   const video = document.getElementById("kamera");
