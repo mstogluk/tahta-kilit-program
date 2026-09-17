@@ -118,19 +118,24 @@ def usb_anahtari_dogrula(dosya_icerigi, gercek_usb_seri_no, acik_b64):
 
 
 def usb_seri_no_oku(aygit_yolu):
-    """/dev/sdX gibi bir aygıt için donanım seri numarasını okur (sysfs üzerinden)."""
-    aygit_adi = os.path.basename(aygit_yolu.rstrip("0123456789"))
-    for taban in (
-        f"/sys/block/{aygit_adi}/device/serial",
-        f"/sys/block/{aygit_adi}/serial",
-    ):
-        try:
-            with open(taban) as f:
-                seri = f.read().strip()
-                if seri:
-                    return seri
-        except FileNotFoundError:
-            continue
+    """/dev/sdX gibi bir aygıt için donanım seri numarasını udev'den okur.
+
+    sysfs'teki /sys/block/*/device/serial USB depolama aygıtlarında genelde
+    yok (SCSI/USB-storage bunu expose etmiyor) - seri no udev'in ID_SERIAL_SHORT
+    özelliğinde duruyor, bu yüzden udevadm kullanılıyor.
+    """
+    import subprocess
+
+    try:
+        cikti = subprocess.check_output(
+            ["udevadm", "info", "--query=property", "--name", aygit_yolu], text=True
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    for satir in cikti.splitlines():
+        if satir.startswith("ID_SERIAL_SHORT="):
+            return satir.split("=", 1)[1].strip() or None
     return None
 
 

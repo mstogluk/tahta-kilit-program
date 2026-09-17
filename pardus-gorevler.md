@@ -99,3 +99,31 @@ düzelteceğim. Format:
 - Beklenen:
 - Hata mesajı (varsa):
 ```
+
+## Test sonuçları (2026-09-17, Pardus'ta yapıldı)
+
+- **Mobil Anahtar**: doğru kod ile açılma OK; eski karekoddan (nonce
+  değişince) üretilen kod reddediliyor OK; 3 yanlış deneme → 15sn
+  kilitlenme → süre sonu tekrar açık OK. Otomatik test scriptleriyle
+  (nonce sabitlenerek, gerçek `mobil_cevap_dogrula` ile) doğrulandı.
+- **USB Anahtar**: aşağıdaki bug düzeltildikten sonra gerçek bir USB
+  bellekle (SanDisk Cruzer Blade, seri `4C530001310920108400`) test
+  edildi — takılınca ~2sn içinde otomatik açılma OK, yanlış seri no ile
+  reddedilme OK.
+
+## Bulunan sorun (2026-09-17) — DÜZELTİLDİ
+
+- Ne oldu: USB Anahtar akışı hiç çalışmıyordu. `keyauth.usb_seri_no_oku`
+  seri numarasını `/sys/block/<aygıt>/device/serial` ya da
+  `/sys/block/<aygıt>/serial` dosyalarından okumaya çalışıyordu, ama
+  normal USB bellekler (USB mass storage/SCSI) bu sysfs yollarını
+  expose etmiyor — bu yüzden fonksiyon her zaman `None` dönüyordu.
+- Beklenen: USB takılınca birkaç saniye içinde otomatik açılması.
+- Kök neden: doğru seri no aslında udev'in `ID_SERIAL_SHORT`
+  özelliğinde duruyor (`udevadm info --query=property --name /dev/sdX`
+  ile doğrulandı).
+- Düzeltme: `keyauth.usb_seri_no_oku`, `lockscreen.py`'de zaten
+  kullanılan `subprocess` deseniyle (bkz. `usb_aygit_yolunu_tahmin_et`)
+  `udevadm info --query=property --name <aygıt>` çalıştırıp
+  `ID_SERIAL_SHORT` satırını okuyacak şekilde değiştirildi. Gerçek
+  USB'yle test edilip doğrulandı, bkz. yukarıdaki test sonuçları.
