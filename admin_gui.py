@@ -663,6 +663,83 @@ class DersProgramiSekmesi(QWidget):
 # Okul Kurulumu sayfası (üç alt sekme)
 # ---------------------------------------------------------------------------
 
+class KurulumPaketiSekmesi(QWidget):
+    """Tahtaya (Pardus'a) götürülecek, git/terminal gerektirmeyen bir kurulum
+    klasörü üretir - pardus_kurulum.py (grafik pencere) + baslat.sh +
+    dosyalar/ (tahta kodu + bu okulun anahtarları)."""
+
+    KAYNAK_DOSYALAR = ["lockscreen.py", "keyauth.py", "run.sh"]
+
+    def __init__(self):
+        super().__init__()
+        aciklama = QLabel(
+            "Bu, bir USB belleğe (ya da herhangi bir klasöre) kopyalayıp Pardus'a "
+            "götürebileceğin, git/terminal gerektirmeyen bir kurulum paketi üretir. "
+            "Pardus'ta içindeki 'baslat.sh'a çift tıklanır, grafik bir pencerede "
+            "sınıf ismi girilir, kurulum tamamlanır."
+        )
+        aciklama.setWordWrap(True)
+        olustur_btn = buton("📦 Kurulum Paketi Oluştur")
+        olustur_btn.clicked.connect(self.paket_olustur)
+        self.durum = QLabel("")
+        self.durum.setWordWrap(True)
+
+        duzen = QVBoxLayout(self)
+        duzen.addWidget(aciklama)
+        duzen.addWidget(olustur_btn, alignment=Qt.AlignLeft)
+        duzen.addWidget(self.durum)
+        duzen.addStretch()
+
+    def paket_olustur(self):
+        if not admin_araci.okul_kurulu_mu():
+            QMessageBox.warning(self, "Uyarı", "Önce Anahtar Kurulumu sekmesinden okulu kur.")
+            return
+
+        hedef_ana = QFileDialog.getExistingDirectory(self, "Paketin oluşturulacağı yeri seç (USB kökü vb.)")
+        if not hedef_ana:
+            return
+
+        hedef = os.path.join(hedef_ana, "ANKA-Kurulum")
+        dosyalar_hedef = os.path.join(hedef, "dosyalar")
+        try:
+            os.makedirs(dosyalar_hedef, exist_ok=True)
+
+            kaynak_dizin = kaynak_yolu("")
+            for ad in self.KAYNAK_DOSYALAR:
+                shutil.copyfile(os.path.join(kaynak_dizin, ad), os.path.join(dosyalar_hedef, ad))
+
+            for ad in ("okul_acik.key", "mobil_gizli.key", "iptal.txt"):
+                kaynak_dosya = os.path.join(admin_araci.TAHTA_CONFIG_DIZINI, ad)
+                if os.path.exists(kaynak_dosya):
+                    shutil.copyfile(kaynak_dosya, os.path.join(dosyalar_hedef, ad))
+
+            shutil.copyfile(
+                os.path.join(kaynak_dizin, "pardus_kurulum.py"), os.path.join(hedef, "pardus_kurulum.py")
+            )
+            baslat_hedef = os.path.join(hedef, "baslat.sh")
+            shutil.copyfile(os.path.join(kaynak_dizin, "baslat.sh"), baslat_hedef)
+            try:
+                os.chmod(baslat_hedef, 0o755)
+            except OSError:
+                pass  # Windows'ta anlamlı değil, Pardus'ta gerekiyorsa README anlatıyor
+
+            with open(os.path.join(hedef, "OKU.txt"), "w", encoding="utf-8") as f:
+                f.write(
+                    "Bu klasörü Pardus'ta tahtaya kopyala (USB ile taşıyabilirsin).\n"
+                    "İçindeki 'baslat.sh' dosyasına çift tıkla.\n\n"
+                    "Çift tıklayınca çalışmazsa (dosyayı bir metin düzenleyicide "
+                    "açarsa): dosyaya sağ tıkla > Özellikler > İzinler sekmesi > "
+                    "'Çalıştırılabilir olarak çalıştırmaya izin ver' kutucuğunu "
+                    "işaretle, sonra tekrar çift tıkla.\n"
+                )
+        except OSError as e:
+            QMessageBox.critical(self, "Hata", f"Paket oluşturulamadı: {e}")
+            return
+
+        self.durum.setText(f"Paket oluşturuldu: {hedef}")
+        QMessageBox.information(self, "Tamam", f"Kurulum paketi hazır:\n{hedef}")
+
+
 class OkulKurulumuSayfasi(QTabWidget):
     def __init__(self):
         super().__init__()
@@ -670,6 +747,7 @@ class OkulKurulumuSayfasi(QTabWidget):
         self.addTab(self.anahtar_sekmesi, "Anahtar Kurulumu")
         self.addTab(OkulBilgileriSekmesi(), "Okul Bilgileri")
         self.addTab(DersProgramiSekmesi(), "Ders Programı")
+        self.addTab(KurulumPaketiSekmesi(), "Kurulum Paketi")
 
     def guncelle(self):
         self.anahtar_sekmesi.guncelle()

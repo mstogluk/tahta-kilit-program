@@ -235,6 +235,37 @@ Uygulanan tasarım, kullanıcının önerdiği "okul kodu" fikrini sadeleştirdi
 
 **Önemli**: Bu, USB anahtar dosya formatında **kırıcı bir değişiklik** — Pardus'taki `keyauth.py` mutlaka güncellenmeli, bkz. `pardus-gorevler.md`.
 
+## Grafik "Kurulum Paketi" özelliği eklendi (2026-09-18)
+
+Pardus'ta anahtarları test etmeye çalışırken ortaya çıkan bir gerçek: `install.sh`'ı çalıştırmak için Pardus'ta `git pull` + terminalde `sudo bash install.sh` gerekiyordu — kullanıcı bunun "gerçek bir program" için kabul edilemez olduğunu belirtti (Mehcan'ın kendi "Kurulum" düğmesiyle karşılaştırınca). İstek: git/terminal'e hiç gerek kalmadan, USB ile taşınıp çift tıklanan, **grafiksel** bir kurulum deneyimi; kurulum sırasında sınıf ismi sorulsun (terminal metniyle değil, gerçek bir popup/editbox ile) ve kilit ekranında gösterilsin; kurulum bitince "Tahtayı Şimdi Kilitle" butonu da olsun.
+
+**Neden tam `.deb` değil**: Debian paketlerinin kurulum sırasında etkileşimli soru sorması (`debconf`) karmaşık/kırılgan; onun yerine daha basit ama aynı "çift tıkla, grafik pencere" deneyimini veren bir yöntem seçildi.
+
+**Uygulanan çözüm**:
+- **`pardus_kurulum.py`** (yeni): GTK penceresi — "Sınıf ismi" ve "Kullanıcı adı (opsiyonel)" giriş kutuları + "Kur" butonu. Ayrıcalıklı adımlar (dosyaları `/opt` ve `/etc`'e kopyalama, autostart kurulumu) **tek bir `pkexec` çağrısıyla** yapılıyor — Linux'un grafiksel "yönetici şifresi" penceresi (Windows UAC'ın karşılığı), terminale hiç yazı yazılmıyor. Güvenlik notu: sınıf ismi (kullanıcı serbest metni) shell komutuna doğrudan gömülmüyor — önce ayrı bir geçici dosyaya yazılıp `cp` ile kopyalanıyor, injection riski olmasın diye.
+- Kurulum tamamlanınca **"Tahtayı Şimdi Kilitle"** butonu beliriyor — `run.sh`'ı hemen başlatıp kilidi test etme imkanı veriyor (reboot/oturum kapatma beklemeden).
+- **`baslat.sh`** (yeni): çift tıklanabilir başlatıcı (`cd` + `python3 pardus_kurulum.py`). Not: USB FAT32/exFAT formatlıysa Linux'un çalıştırılabilir izin biti taşınmayabilir — paketteki `OKU.txt` bu durumda sağ tık > Özellikler > "Çalıştırılabilir olarak çalıştır" ile grafiksel çözümü anlatıyor (yine terminal gerekmiyor).
+- **`keyauth.SINIF_ADI_FILE`** eklendi, **`lockscreen.py`** artık `/etc/tahtakilit/sinif_adi.txt` varsa kilit ekranında "<sınıf ismi> — Tahta Kilitli" gösteriyor (Pango markup injection'a karşı `GLib.markup_escape_text` ile kaçış yapılıyor).
+- **`admin_gui.py`**'ye yeni **"Kurulum Paketi"** sekmesi (Okul Kurulumu altında): bir USB/klasör seçtirip içine `ANKA-Kurulum/` klasörü oluşturuyor — `pardus_kurulum.py`, `baslat.sh`, `dosyalar/` (tahta kodu + bu okulun `okul_acik.key`/`mobil_gizli.key`/`iptal.txt`) + kullanım talimatlı `OKU.txt`.
+- `.exe` artık bu yeni dosyaları da (`--add-data`) içine gömüyor; `kaynak_yolu()` yardımcı fonksiyonu (ikon için zaten vardı) burada da kullanıldı — paketleme kodu önce yanlışlıkla `__file__` ile kendi yolunu hesaplıyordu, bu paketlenmiş `.exe` içinde yanlış çalışırdı, düzeltildi.
+
+**Test durumu**: Paket klasörünün doğru dosyalarla oluştuğu ve frozen `.exe` içindeki yol çözümlemesinin (`sys._MEIPASS` simülasyonuyla) doğru çalıştığı doğrulandı. **`pardus_kurulum.py`'nin kendisi (GTK penceresi, pkexec akışı) gerçek Pardus donanımında henüz hiç test edilmedi** — bu makinede GTK yok, sadece syntax kontrolü yapılabildi. Bir sonraki Pardus oturumunda mutlaka gerçek kurulum denenmeli.
+
+## İlk gerçek Pardus testi: 3 sorun bulundu, 2'si düzeltildi (2026-09-18)
+
+Kullanıcı `pardus_kurulum.py`'yi ilk kez gerçek donanımda denedi, üç sorunla karşılaştı:
+
+1. **"İki farklı öğretmen kabul etti" (aynı okula ait olmalarına rağmen)** — bu bir kod hatası DEĞİL, benim işletim hatam: `1. madde`/`2. madde` özelliklerini test ederken kendi test verilerim için `veri_deposu.depo_olustur(...)`'u defalarca çağırdım, her seferinde **yepyeni rastgele bir okul anahtarı** üretilip kullanıcının gerçek ("Ali Veli") anahtarının üzerine yazıldı. USB'deki iki kayıt aslında **farklı okul anahtarlarıyla** imzalanmış oldu, sistem onları haklı olarak ayrı okul sayıp ikisini de bıraktı — mantık doğru çalıştı, ama ben araya girip zemin kaydırdım. **Ders çıkarımı**: bundan sonra kendi testlerim için `admin-gizli/`'yi hiç kullanmayacağım, izole bir yerde test edeceğim. **Sonuç**: kullanıcının gerçek okul kurulumu kayboldu, yeniden yapılması gerekiyor (aşağıda).
+
+2. **✅ DÜZELTİLDİ — "Kullanıcı adı neden soruldu, kurulum tüm kullanıcılar için geçerli olmalı".** Kullanıcı haklıydı, bu gerçek bir tasarım hatasıydı. Autostart, tek bir kullanıcının `~/.config/autostart/`'ına kuruluyordu. Düzeltme: **sistem geneli** `/etc/xdg/autostart/` kullanılıyor artık — hangi kullanıcı oturum açarsa açsın devreye giriyor, kullanıcı adı sorma ihtiyacı tamamen kalktı (`pardus_kurulum.py`'den o alan silindi). Aynı düzeltme tutarlılık için eski `install.sh`'a da yapıldı (artık parametre almıyor, `sudo bash install.sh` yeterli).
+
+3. **"Tahtayı Kilitle" tepki vermedi, USB çıkarınca da kilitlenmedi** — muhtemel sebep: USB hâlâ takılıyken tahta anında (2sn'de bir taranan) geçerli anahtarı bulup kendini otomatik açtı, çok kısa süreliğine görünüp kaybolmuş olabilir. Ayrıca gerçek bir hata buldum ve **düzelttim**: "Tahtayı Şimdi Kilitle" butonu ilk tıklamadan hemen sonra **kurulum penceresini kapatıyordu** — tekrar denemek isteyen kullanıcının tıklayacağı bir buton kalmıyordu. Artık pencere açık kalıyor, buton tekrar tekrar kullanılabiliyor, ve kurulum bitince "USB'yi çıkarmayı unutma" uyarısı da ekrana ekleniyor.
+
+**Kullanıcı için yapılacaklar (bir sonraki oturumda)**:
+- `github_gonder.bat` ile bu düzeltmeleri gönder.
+- ANKA'da okulu **yeniden kur** (eski kurulum kayboldu) ve yeni bir kurulum paketi üret.
+- Pardus'ta yeni paketle tekrar dene: kurulum sırasında artık kullanıcı adı sormayacak; "Tahtayı Kilitle"ye bastıktan sonra USB'yi çıkarıp gerçekten kilitli kaldığını doğrula.
+
 ## Arayüz sadeleştirmesi + dokunmatik tuş takımı (2026-09-17)
 
 Kullanıcının testler sırasında fark ettiği sorunlar üzerine:
@@ -266,7 +297,8 @@ Pardus'taki ayrı Claude Desktop oturumu `pardus-gorevler.md`'yi uygulayıp ger�
 - EBA karekodu ile doğrudan tahtayı açma: resmi bir API olup olmadığı belirsiz, araştırılmadı, muhtemelen mümkün değil.
 - Yoklama, duyurular, bildirimler gibi ek özellikler (Mehcan'da var): ileride değerlendirilebilir, ağ/sunucu gerektirebilir.
 - Ders/teneffüs saatlerine göre otomatik kilit/açma: ayrı bir özellik olarak ileride değerlendirilebilir.
-- `.deb` paket haline getirme: ileride yapılabilir, şu an `install.sh` yeterli.
+- `.deb` paket haline getirme: artık `pardus_kurulum.py` ile git/terminal'siz kurulum var, gerçek `.deb`'e gerek kalmayabilir — bkz. "Grafik Kurulum Paketi" bölümü.
+- **Kilit açıldıktan sonra sağ alt köşede küçük bir kontrol penceresi** (kullanıcı notu, 2026-09-18): Mehcan'da, USB/mobil anahtarla açıldıktan sonra ekranın sağ altında küçük bir pencerecik beliriyor — içinde "Yoklama Al", "Tahtayı Kilitle" gibi birkaç hızlı seçenek var (kullanıcı tüm seçenekleri tam hatırlamıyor). İleride gerekip gerekmeyeceği belirsiz, şimdilik sadece not düşülüyor.
 
 ## Genel yaklaşım notu
 Bu proje boyunca "ponytail" (en yalın/en az kod, YAGNI, stdlib/native önce) prensibiyle ilerlendi — her yeni özellik için önce en basit çözüm denendi, karmaşıklaştırma ihtiyaç doğunca yapıldı.

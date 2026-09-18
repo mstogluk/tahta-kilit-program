@@ -1,23 +1,16 @@
 #!/bin/bash
-# Tahta Kilit - kurulum betiği.
-# Kullanım: sudo bash install.sh <lightdm_otomatik_giris_kullanicisi>
+# Tahta Kilit - kurulum betiği (git tabanlı, geliştirme/test için).
+# Kullanım: sudo bash install.sh
+#
+# Not: Asıl son-kullanıcı kurulum yöntemi artık ANKA'nın ürettiği
+# pardus_kurulum.py (grafik pencere) - bkz. devam-notu.md. Bu betik git
+# reposunu doğrudan çalıştıranlar için hâlâ duruyor.
 set -e
 
 if [ "$EUID" -ne 0 ]; then
-  echo "Bu betik sudo ile çalıştırılmalı: sudo bash install.sh <kullanici_adi>"
+  echo "Bu betik sudo ile çalıştırılmalı: sudo bash install.sh"
   exit 1
 fi
-
-KULLANICI="$1"
-if [ -z "$KULLANICI" ]; then
-  # LightDM otomatik giriş kullanıcısını tahmin etmeye çalış (garanti değil)
-  KULLANICI=$(grep -oP '^autologin-user=\K.*' /etc/lightdm/lightdm.conf.d/*.conf 2>/dev/null | head -n1)
-fi
-if [ -z "$KULLANICI" ]; then
-  echo "Kullanıcı adı belirlenemedi. Elle ver: sudo bash install.sh <kullanici_adi>"
-  exit 1
-fi
-echo "Kurulum kullanıcısı: $KULLANICI"
 
 BURASI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -25,7 +18,7 @@ echo "Gerekli paketler kuruluyor..."
 apt update
 apt install -y python3-gi gir1.2-gtk-3.0 python3-cryptography python3-qrcode
 
-mkdir -p /etc/tahtakilit
+mkdir -p /etc/tahtakilit /etc/xdg/autostart
 
 if [ -f "$BURASI/tahta-config/okul_acik.key" ]; then
   cp "$BURASI/tahta-config/okul_acik.key" /etc/tahtakilit/okul_acik.key
@@ -48,23 +41,17 @@ fi
 
 chmod +x "$BURASI/lockscreen.py" "$BURASI/run.sh"
 
-KULLANICI_EV=$(getent passwd "$KULLANICI" | cut -d: -f6)
-if [ -z "$KULLANICI_EV" ]; then
-  echo "UYARI: '$KULLANICI' kullanıcısı bulunamadı, autostart kurulamadı."
-  exit 1
-fi
-
-mkdir -p "$KULLANICI_EV/.config/autostart"
-cat > "$KULLANICI_EV/.config/autostart/tahtakilit.desktop" <<EOF
+# Sistem geneli autostart - belirli bir kullanıcıya bağlı değil, o tahtada
+# kim oturum açarsa açsın devreye giriyor.
+cat > /etc/xdg/autostart/tahtakilit.desktop <<EOF
 [Desktop Entry]
 Type=Application
 Name=Tahta Kilit
 Exec=$BURASI/run.sh
 X-GNOME-Autostart-enabled=true
 EOF
-chown "$KULLANICI:$KULLANICI" "$KULLANICI_EV/.config/autostart/tahtakilit.desktop"
 
 echo ""
 echo "Kurulum tamamlandı."
-echo "Tahta, '$KULLANICI' oturumu her açıldığında otomatik kilitlenecek."
-echo "Test etmek için: sudo -u $KULLANICI $BURASI/run.sh"
+echo "Tahta, hangi kullanıcıyla oturum açılırsa açılsın otomatik kilitlenecek."
+echo "Test etmek için: $BURASI/run.sh"

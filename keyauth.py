@@ -36,6 +36,7 @@ MOBIL_GIZLI_KEY = os.path.join(ETC_DIR, "mobil_gizli.key")
 TAHTA_ID_FILE = os.path.join(ETC_DIR, "tahta_id.txt")
 IPTAL_FILE = os.path.join(ETC_DIR, "iptal.txt")
 KULLANIM_LOG_FILE = os.path.join(ETC_DIR, "kullanim.log")
+SINIF_ADI_FILE = os.path.join(ETC_DIR, "sinif_adi.txt")
 
 USB_ANAHTAR_DOSYA_ADI = ".tahtakilit_anahtar.json"  # baştaki nokta: Linux'ta gizli dosya
 

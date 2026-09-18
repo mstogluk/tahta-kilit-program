@@ -100,8 +100,10 @@ class KilitPenceresi(Gtk.Window):
         vbox.set_halign(Gtk.Align.CENTER)
         self.add(vbox)
 
+        sinif_adi = keyauth.dosyadan_oku(keyauth.SINIF_ADI_FILE)
+        baslik_metni = f"{sinif_adi} — Tahta Kilitli" if sinif_adi else "Tahta Kilitli"
         baslik = Gtk.Label()
-        baslik.set_markup('<span font="28" foreground="white">Tahta Kilitli</span>')
+        baslik.set_markup(f'<span font="28" foreground="white">{GLib.markup_escape_text(baslik_metni)}</span>')
         vbox.pack_start(baslik, False, False, 0)
 
         self.qr_resim = Gtk.Image()

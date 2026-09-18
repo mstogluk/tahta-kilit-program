@@ -1,5 +1,30 @@
 # Pardus'ta Yapılacaklar / Test Edilecekler
 
+## YENİ (2026-09-18) — pardus_kurulum.py hiç test edilmedi, ÖNCELİKLİ
+
+ANKA'da "Kurulum Paketi Oluştur" (Okul Kurulumu > Kurulum Paketi) ile bir
+`ANKA-Kurulum` klasörü üretilip USB'ye kopyalanabiliyor. Bu klasördeki
+`pardus_kurulum.py` (grafik kurulum penceresi) **bu makinede hiç GTK
+olmadığı için sadece syntax kontrolünden geçti, gerçek donanımda hiç
+çalıştırılmadı.**
+
+Test et:
+1. Windows'ta ANKA'da "Kurulum Paketi Oluştur" ile bir paket üret (bir USB'ye).
+2. USB'yi Pardus'a tak, `ANKA-Kurulum` klasörünü aç.
+3. `baslat.sh`'a çift tıkla. Çalışmazsa (metin editöründe açılırsa): sağ tık
+   > Özellikler > İzinler > "Çalıştırılabilir olarak çalıştırmaya izin ver"
+   kutucuğunu işaretleyip tekrar dene (bkz. klasördeki `OKU.txt`).
+4. Açılan pencerede sınıf ismi gir (örn. "5-A Sınıfı"), kullanıcı adını boş
+   bırak (otomatik bulunsun), "Kur"a bas.
+5. `pkexec` grafiksel şifre penceresi çıkmalı — `etapadmin` şifresini gir.
+6. Kurulum bitince "Tahtayı Şimdi Kilitle" butonu çıkmalı — tıklayınca kilit
+   ekranı hemen açılmalı, üstünde "5-A Sınıfı — Tahta Kilitli" yazmalı.
+7. Kontrol et: `/opt/tahtakilit/` ve `/etc/tahtakilit/` doğru dolmuş mu,
+   `cat /etc/tahtakilit/sinif_adi.txt` doğru ismi gösteriyor mu.
+8. USB/mobil anahtarların hâlâ çalıştığını doğrula (bu kurulum yöntemi
+   git tabanlısının yerini tutuyor, aynı sonucu vermeli).
+
+
 ## YENİ (2026-09-18) — USB anahtar dosya formatı değişti, DİKKAT
 
 `keyauth.usb_anahtari_olustur`/`usb_anahtari_dogrula` iki büyük değişiklik
@@ -114,9 +139,10 @@ sadece "Karekod Oluştur" butonuna basılınca üretiyor.
 
 3. **Kurulumu çalıştır**:
    ```bash
-   sudo bash install.sh ogretmen
+   sudo bash install.sh
    ```
-   (kullanıcı adı farklıysa değiştir)
+   (artık kullanıcı adı sormuyor — sistem geneli autostart kuruluyor,
+   kim oturum açarsa açsın çalışır)
 
 4. **Elle test et** (otomatik başlamasını beklemeden):
    ```bash
