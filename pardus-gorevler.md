@@ -1,6 +1,31 @@
 # Pardus'ta Yapılacaklar / Test Edilecekler
 
-## YENİ (2026-09-17, akşam) — admin_gui.py eklendi, Linux tarafı hiç test edilmedi
+## YENİ (2026-09-18) — USB anahtar dosya formatı değişti, DİKKAT
+
+`keyauth.usb_anahtari_olustur`/`usb_anahtari_dogrula` iki büyük değişiklik
+geçirdi:
+1. İmzalanan mesaja `ogretmen_kodu` eklendi (aynı öğretmenin birden fazla
+   USB'sinin/mobil anahtarının aynı kodu paylaşması için).
+2. Dosya formatı tek bir nesneden **listeye** döndü (çoklu okul desteği —
+   aynı USB'ye birden fazla okulun kaydı sığabiliyor, tahta kendi okuluna
+   ait olanı bulup açıyor).
+
+**Bu, eski formatla üretilmiş USB anahtar dosyalarını geçersiz kılan bir
+değişiklik** — Pardus'taki `keyauth.py` mutlaka güncellenmeli (`git pull`),
+yoksa eski/yeni format uyuşmaz, hiçbir USB anahtarı açılmaz. Güncelledikten
+sonra yeni bir USB anahtarı üretip gerçek donanımda test et. İki farklı
+"okul" (iki ayrı `okul_kurulumu_yap` ile üretilmiş anahtar çifti) simüle
+edip aynı USB'ye ekleyerek çoklu okul senaryosunu da gerçek donanımda
+denemek iyi olur — şu ana kadar sadece mantık seviyesinde test edildi.
+
+Ayrıca admin arayüzü Tkinter'dan **PySide6/Qt**'ye geçti (aşağıdaki eski
+notlardaki Tkinter/`python3-tk` talimatları artık geçersiz) ve tüm admin
+verisi artık şifreli bir SQLite deposunda (`admin-gizli/veri.enc`) — program
+açılışında yönetici şifresi soruyor. Pardus'ta admin aracını denemek
+istersen: `pip install PySide6 qrcode Pillow cryptography` (ya da
+`python3-pyside6` gibi bir paket varsa onu), sonra `python3 admin_gui.py`.
+
+## YENİ (2026-09-17, akşam) — admin_gui.py eklendi, Linux tarafı hiç test edilmedi (ESKİ, Tkinter dönemi notları)
 
 Windows'ta (Tkinter + WMI ile USB tespiti) uçtan uca test edildi, çalışıyor.
 Linux/Pardus tarafındaki USB tespiti (`lsblk` ile) **hiç test edilmedi** —

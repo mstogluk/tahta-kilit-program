@@ -216,20 +216,24 @@ Kullanıcı ilk yedekleme özelliğini (sadece anahtar dosyasını hedef alan, d
 
 ## Yarınki oturum için ilk yapılacaklar (kullanıcı notu, 2026-09-17 akşam)
 
-Kullanıcı çıkmadan önce iki madde bıraktı, henüz uygulanmadı:
+Kullanıcı çıkmadan önce iki madde bıraktı:
 
-**1. USB anahtarları da "öğretmen kodu" havuzunu kullanmalı, aynı öğretmene aynı kod verilmeli.**
-Şu an USB akışı (`usb_anahtar_hazirla`) hiç "öğretmen kodu" (0-9999) kullanmıyor — sadece isim+USB seri no imzalıyor. Kullanıcının istediği: bir öğretmen birden fazla USB bellek için anahtar üretse bile (kaybetti/yedek istiyor/vs.), hepsi **aynı** öğretmen koduna sahip olmalı — her seferinde havuzdan yeni bir kod harcanmamalı (10.000 kapasiteyi boşuna şişirmesin). Yani `usb_anahtar_hazirla`, önce `ogretmenler` tablosunda bu isimde biri var mı diye bakmalı, varsa onun kodunu kullanmalı/USB payload'ına da yazmalı, yoksa yeni kod atamalı (mobil akıştaki `sonraki_bos_kod` mantığının aynısı).
+**1. ✅ TAMAMLANDI (2026-09-18) — USB anahtarları da "öğretmen kodu" havuzunu kullanmalı, aynı öğretmene aynı kod verilmeli.**
+`usb_anahtar_hazirla` artık önce `ogretmenler` tablosunda bu isimde kayıtlı biri var mı diye bakıyor (`_mevcut_kodu_bul`), varsa onun kodunu kullanıyor, yoksa yeni atıyor. USB payload'ına da `ogretmen_kodu` eklendi (imzalanan mesaja dahil: `keyauth.usb_anahtari_olustur` artık `(ozel_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no)` alıyor). Ayrıca **aynı boşluk mobil akışın otomatik-kod-atama yolunda da vardı** (aynı ismi tekrar girip kod belirtmeden mobil anahtar üretilse yeni bir kod harcanıyordu) — o da aynı `_mevcut_kodu_bul` ile düzeltildi. Test edildi: aynı öğretmenin 2 farklı USB'si + mobil anahtarı hepsi aynı kodu paylaşıyor, farklı öğretmen farklı kod alıyor, doğrulama (doğru/yanlış seri) hâlâ doğru çalışıyor.
 
-**2. Bir öğretmen birden fazla okulda ders veriyorsa, TEK bir USB bellek hepsinde çalışabilmeli.**
-Senaryo: aynı öğretmen hem A okulunda hem B okulunda ders veriyor, ikisi de ayrı ayrı bizim programımızı (ayrı kurulumlar, ayrı okul ana anahtarları) kullanıyor. Öğretmen her okul için ayrı USB taşımak zorunda kalmamalı. Kullanıcının önerisi: USB bellekteki dosyaya **her okulun kendi kaydı ayrı ayrı** yazılsın (her biri o okulun kendi özel anahtarıyla imzalanmış, o okulun bir "okul kodu"yla etiketlenmiş). Tahta, USB'yi okuyunca dosyadaki kayıtlar arasında **kendi okuluna ait olanı** bulup onunla doğrulama yapmalı.
+**2. ✅ TAMAMLANDI (2026-09-18) — Bir öğretmen birden fazla okulda ders veriyorsa, TEK bir USB bellek hepsinde çalışabilmeli.**
 
-Bunun için düşünülmesi gerekenler (henüz tasarlanmadı):
-- Okullara insan-dostu bir "okul kodu" kavramı eklemek gerekecek (şu an sadece kriptografik anahtarlarla ayrışıyorlar, kısa bir kimlik yok).
-- USB dosya formatı tek bir imzalı kayıttan, **birden fazla imzalı kayıt** (her biri farklı bir okula ait) taşıyan bir listeye dönüşmeli — `keyauth.usb_anahtari_dogrula` da "listede benim okul kodum var mı" diye arayacak şekilde değişmeli.
-- Bir okulun admin'i, başka bir okulun anahtarını bu USB'ye "ekleme" akışını nasıl yapacak (muhtemelen: öğretmen USB'yi getirir, o okulun ANKA'sı üzerinden "bu USB'ye BENİM okulumun anahtarını da ekle" der, dosyadaki listeye yeni bir kayıt eklenir, var olanlar silinmez/bozulmaz).
+Uygulanan tasarım, kullanıcının önerdiği "okul kodu" fikrini sadeleştirdi: **ayrı bir okul kodu icat etmeye gerek olmadığı** ortaya çıktı — kurulumda zaten üretilen `okul_acik.key` aynı işi görüyor.
 
-Bu ikisi de henüz kodlanmadı — yarın buradan devam.
+- USB dosya formatı artık **tek nesne değil, bir liste** (`keyauth.usb_listesini_oku` — eski tek-nesne formatına da tolerans gösteriyor).
+- `keyauth.usb_listesine_ekle(mevcut_icerik, ozel_b64, acik_b64, ...)`: USB'de zaten başka okulların kayıtları varsa dokunmuyor; kendi okuluna ait eski bir kayıt varsa (imza kendi açık anahtarıyla doğrulanıyorsa) siliyor, yenisiyle değiştiriyor. Başka okulların kaydını "kendimize ait mi" diye kontrol ederken zaten doğrulayamayız (onların özel anahtarını bilmiyoruz) — bu otomatik izolasyon sağlıyor.
+- `keyauth.usb_anahtari_dogrula`: artık listedeki kayıtları tek tek dener, **kendi okulunun açık anahtarıyla doğrulanan** kaydı bulunca döner, diğerlerini yok sayar.
+- `admin_araci.usb_anahtar_hazirla` yeni `mevcut_icerik` parametresi aldı; `admin_gui.py`'deki USB sekmesi de anahtar üretmeden önce USB'de zaten dosya var mı diye okuyup bu parametreyi geçiriyor.
+- `lockscreen.py` ve CLI'da **hiçbir değişiklik gerekmedi** — `usb_anahtari_dogrula`'nın dış arayüzü (imza) aynı kaldı, liste mantığı içeride gizli.
+
+**Test edildi**: İki farklı "okul" (iki ayrı anahtar çifti) simüle edilip aynı USB'ye sırayla eklendi — her iki okulun tahtası da kendi kaydını buldu, alakasız üçüncü bir okul hiçbirini tanımadı, aynı öğretmen için okul A anahtarını yenileyince sadece A'nın kaydı güncellendi (çoğalmadı), B'nin kaydına dokunulmadı. `admin_araci` katmanından da (gerçek admin akışıyla, USB'de simüle edilmiş yabancı bir kayıtla) doğrulandı.
+
+**Önemli**: Bu, USB anahtar dosya formatında **kırıcı bir değişiklik** — Pardus'taki `keyauth.py` mutlaka güncellenmeli, bkz. `pardus-gorevler.md`.
 
 ## Arayüz sadeleştirmesi + dokunmatik tuş takımı (2026-09-17)
 

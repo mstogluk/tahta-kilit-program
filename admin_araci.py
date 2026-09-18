@@ -106,19 +106,40 @@ def komut_kurulum(_args):
 # USB Anahtar
 # ---------------------------------------------------------------------------
 
-def usb_anahtar_hazirla(ogretmen_adi, seri_no):
-    """(icerik) döner - USB'ye yazılacak dosyanın tam içeriği."""
+def usb_anahtar_hazirla(ogretmen_adi, seri_no, mevcut_icerik=None):
+    """(icerik) döner - USB'ye yazılacak dosyanın TAM içeriği.
+
+    Aynı öğretmen için birden fazla USB üretilse bile (kaybetti/yedek vb.)
+    hep aynı öğretmen kodu kullanılır - kod havuzu her seferinde harcanmaz.
+
+    mevcut_icerik verilirse (USB'de zaten bir dosya varsa) - çoklu okul
+    desteği: başka okulların kayıtları korunur, sadece kendi okulumuzun
+    kaydı eklenir/güncellenir. Bkz. keyauth.usb_listesine_ekle.
+    """
     if not okul_kurulu_mu():
         raise AdminHatasi("Önce okul kurulumu yapılmalı.")
     ozel_b64 = veri_deposu.baglanti().execute(
         "SELECT deger FROM ayarlar WHERE anahtar='okul_ozel_key'"
     ).fetchone()[0]
-    return keyauth.usb_anahtari_olustur(ozel_b64, ogretmen_adi, seri_no)
+    with open(ACIK_ANAHTAR_DOSYASI) as f:
+        acik_b64 = f.read().strip()
+
+    kayit = ogretmenleri_yukle()
+    ogretmen_kodu = _mevcut_kodu_bul(ogretmen_adi, kayit) or sonraki_bos_kod(kayit)
+    _ogretmen_kaydet(ogretmen_kodu, ogretmen_adi)
+
+    return keyauth.usb_listesine_ekle(
+        mevcut_icerik, ozel_b64, acik_b64, ogretmen_kodu, ogretmen_adi, seri_no
+    )
 
 
 def komut_usb_anahtar_uret(args):
+    mevcut_icerik = None
+    if os.path.exists(args.cikti):
+        with open(args.cikti) as f:
+            mevcut_icerik = f.read()
     try:
-        icerik = usb_anahtar_hazirla(args.ogretmen_adi, args.seri_no)
+        icerik = usb_anahtar_hazirla(args.ogretmen_adi, args.seri_no, mevcut_icerik)
     except AdminHatasi as e:
         sys.exit(str(e))
 
@@ -145,6 +166,16 @@ def _ogretmen_kaydet(kod, ad):
     conn.execute("INSERT OR REPLACE INTO ogretmenler (kod, ad) VALUES (?, ?)", (kod, ad))
     conn.commit()
     veri_deposu.kaydet()
+
+
+def _mevcut_kodu_bul(ogretmen_adi, kayit):
+    """Bu isimde zaten kayıtlı bir öğretmen varsa kodunu döner, yoksa None.
+    İsim eşleşmesi birebir (harf/boşluk) - admin aynı öğretmeni farklı
+    yazarsa (örn. "Ahmet" vs "Ahmet Yılmaz") ayrı kayıt olarak görülür."""
+    for kod, ad in kayit.items():
+        if ad == ogretmen_adi:
+            return kod
+    return None
 
 
 def sonraki_bos_kod(kayit):
@@ -177,7 +208,9 @@ def mobil_anahtar_hazirla(ogretmen_adi, kod=None):
         if ogretmen_kodu in kayit and kayit[ogretmen_kodu] != ogretmen_adi:
             raise AdminHatasi(f"Kod {ogretmen_kodu} zaten '{kayit[ogretmen_kodu]}' için kullanılıyor.")
     else:
-        ogretmen_kodu = sonraki_bos_kod(kayit)
+        # Bu isimde zaten kayıtlı biri varsa (örn. daha önce USB anahtarı
+        # üretilmişti) aynı kodu kullan - havuzdan boşuna yeni kod harcama.
+        ogretmen_kodu = _mevcut_kodu_bul(ogretmen_adi, kayit) or sonraki_bos_kod(kayit)
 
     _ogretmen_kaydet(ogretmen_kodu, ogretmen_adi)
 

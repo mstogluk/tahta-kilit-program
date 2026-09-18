@@ -76,37 +76,85 @@ def acik_anahtar_yukle(acik_b64):
 # USB Anahtar: üretim (admin) ve doğrulama (tahta)
 # ---------------------------------------------------------------------------
 
-def usb_anahtari_olustur(ozel_b64, ogretmen_adi, usb_seri_no):
-    """Admin tarafında çağrılır. USB'ye yazılacak JSON içeriğini döner."""
+def _usb_kaydi_uret(ozel_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no):
+    """Tek bir okulun imzalı kaydını (dict olarak) üretir."""
     ozel = ozel_anahtar_yukle(ozel_b64)
-    mesaj = f"{ogretmen_adi}|{usb_seri_no}".encode()
+    mesaj = f"{ogretmen_kodu}|{ogretmen_adi}|{usb_seri_no}".encode()
     imza = ozel.sign(mesaj)
-    return json.dumps(
-        {
-            "ogretmen": ogretmen_adi,
-            "seri": usb_seri_no,
-            "imza": base64.b64encode(imza).decode(),
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+    return {
+        "ogretmen_kodu": ogretmen_kodu,
+        "ogretmen": ogretmen_adi,
+        "seri": usb_seri_no,
+        "imza": base64.b64encode(imza).decode(),
+    }
 
 
-def usb_anahtari_dogrula(dosya_icerigi, gercek_usb_seri_no, acik_b64):
-    """Tahta tarafında çağrılır. Geçerliyse öğretmen adını, değilse None döner."""
+def usb_anahtari_olustur(ozel_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no):
+    """Tek okulluk basit kullanım (CLI, testler) - tek kayıtlık liste JSON'u döner."""
+    kayit = _usb_kaydi_uret(ozel_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no)
+    return json.dumps([kayit], ensure_ascii=False, indent=2)
+
+
+def usb_listesini_oku(dosya_icerigi):
+    """Ham USB dosya içeriğini bir kayıt listesine çevirir. Bozuk/boşsa []."""
+    if not dosya_icerigi or not dosya_icerigi.strip():
+        return []
     try:
         veri = json.loads(dosya_icerigi)
-        ogretmen_adi = veri["ogretmen"]
-        dosyadaki_seri = veri["seri"]
-        imza = base64.b64decode(veri["imza"])
-    except (json.JSONDecodeError, KeyError, ValueError):
+    except json.JSONDecodeError:
+        return []
+    if isinstance(veri, list):
+        return veri
+    return [veri]  # tek nesne olarak gelmiş olabilir, tolerans göster
+
+
+def _kayit_bu_okula_mi_ait(kayit, acik_b64):
+    """Bu kaydın imzası, verilen açık anahtarla doğrulanıyor mu?"""
+    try:
+        ogretmen_kodu = kayit["ogretmen_kodu"]
+        ogretmen_adi = kayit["ogretmen"]
+        seri = kayit["seri"]
+        imza = base64.b64decode(kayit["imza"])
+    except (KeyError, ValueError, TypeError):
+        return False
+    acik = acik_anahtar_yukle(acik_b64)
+    mesaj = f"{ogretmen_kodu}|{ogretmen_adi}|{seri}".encode()
+    try:
+        acik.verify(imza, mesaj)
+        return True
+    except InvalidSignature:
+        return False
+
+
+def usb_listesine_ekle(mevcut_icerik, ozel_b64, acik_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no):
+    """Çoklu okul desteği: USB'de zaten başka okulların kayıtları olabilir.
+
+    Kendi okulumuza ait eski bir kayıt varsa (imza bizim açık anahtarımızla
+    doğrulanıyorsa) çıkarılıp yenisiyle değiştirilir; başka okulların
+    kayıtlarına hiç dokunulmaz (onların imzasını zaten doğrulayamayız,
+    bu da otomatik izolasyon sağlıyor - ayrı bir "okul kodu" gerekmiyor).
+    Yazılacak TAM liste içeriğini (JSON) döner.
+    """
+    liste = usb_listesini_oku(mevcut_icerik)
+    kalanlar = [k for k in liste if not _kayit_bu_okula_mi_ait(k, acik_b64)]
+    kalanlar.append(_usb_kaydi_uret(ozel_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no))
+    return json.dumps(kalanlar, ensure_ascii=False, indent=2)
+
+
+def _tek_kayit_dogrula(kayit, gercek_usb_seri_no, acik_b64):
+    try:
+        ogretmen_kodu = kayit["ogretmen_kodu"]
+        ogretmen_adi = kayit["ogretmen"]
+        dosyadaki_seri = kayit["seri"]
+        imza = base64.b64decode(kayit["imza"])
+    except (KeyError, ValueError, TypeError):
         return None
 
     if dosyadaki_seri != gercek_usb_seri_no:
         return None  # dosya başka bir USB'den kopyalanmış
 
     acik = acik_anahtar_yukle(acik_b64)
-    mesaj = f"{ogretmen_adi}|{dosyadaki_seri}".encode()
+    mesaj = f"{ogretmen_kodu}|{ogretmen_adi}|{dosyadaki_seri}".encode()
     try:
         acik.verify(imza, mesaj)
     except InvalidSignature:
@@ -116,6 +164,18 @@ def usb_anahtari_dogrula(dosya_icerigi, gercek_usb_seri_no, acik_b64):
         return None
 
     return ogretmen_adi
+
+
+def usb_anahtari_dogrula(dosya_icerigi, gercek_usb_seri_no, acik_b64):
+    """Tahta tarafında çağrılır. USB'deki listeyi dolaşıp KENDİ okuluna ait
+    (açık anahtarıyla doğrulanan) kaydı arar - başka okulların kayıtlarını
+    yok sayar. Geçerliyse öğretmen adını, hiçbiri tutmazsa None döner.
+    """
+    for kayit in usb_listesini_oku(dosya_icerigi):
+        sonuc = _tek_kayit_dogrula(kayit, gercek_usb_seri_no, acik_b64)
+        if sonuc:
+            return sonuc
+    return None
 
 
 def usb_seri_no_oku(aygit_yolu):

@@ -279,13 +279,23 @@ class UsbSekmesi(QWidget):
             QMessageBox.warning(self, "Uyarı", "Öğretmen adı boş olamaz.")
             return
 
+        yol = disk["kok"] + keyauth.USB_ANAHTAR_DOSYA_ADI
+        mevcut_icerik = None
+        if os.path.exists(yol):
+            # USB'de zaten başka bir okulun (ya da bu okulun eski) kaydı
+            # olabilir - çoklu okul desteği için okunup korunuyor.
+            try:
+                with open(yol) as f:
+                    mevcut_icerik = f.read()
+            except OSError:
+                pass
+
         try:
-            icerik = admin_araci.usb_anahtar_hazirla(ad, disk["seri"])
+            icerik = admin_araci.usb_anahtar_hazirla(ad, disk["seri"], mevcut_icerik)
         except admin_araci.AdminHatasi as e:
             QMessageBox.critical(self, "Hata", str(e))
             return
 
-        yol = disk["kok"] + keyauth.USB_ANAHTAR_DOSYA_ADI
         try:
             with open(yol, "w") as f:
                 f.write(icerik)
