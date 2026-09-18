@@ -9,6 +9,7 @@ Diğer araç çubuğu düğmeleri (Duyurular, Yoklama, Transfer, Kontrol...)
 yer tutucu - ileride gerçek işlevle doldurulacak, düzen ona göre kuruldu.
 """
 import io
+import json
 import os
 import platform
 import shlex
@@ -16,10 +17,10 @@ import shutil
 import subprocess
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget,
     QTextEdit, QVBoxLayout, QWidget,
@@ -193,7 +194,7 @@ def buton(metin):
     return b
 
 
-def qr_pixmap(veri, boyut=170):
+def qr_pixmap(veri, boyut=340):
     try:
         import qrcode
     except ImportError:
@@ -223,6 +224,88 @@ def tablo_olustur(basliklar, duzenlenebilir=False):
 # Anahtarlar - USB sekmesi
 # ---------------------------------------------------------------------------
 
+class OgretmenSecimAlani(QWidget):
+    """USB/Mobil sekmelerinde ortak: öğretmen adı girme + isteğe bağlı
+    'var olan öğretmenden seç' kolaylığı.
+
+    Bilerek isme bakıp OTOMATİK eşleştirme yapmıyoruz - iki farklı öğretmen
+    aynı ad/soyadı taşıyabilir, aynı öğretmen de farklı yazılmış olabilir;
+    bunu kesin ayırt etmenin bir yolu yok, karar admin'e ait. "Var olan
+    öğretmen" listesi sadece bir KOLAYLIK: seçilince isim alanını doldurur
+    (isim hâlâ DÜZENLENEBİLİR - örn. "Ahmet" yazılmışı "Ahmet Ak" olarak
+    düzeltebilirsin) ve o kodun reuse edileceğini işaretler. "— Yeni
+    öğretmen —" seçiliyken (varsayılan) her zaman yeni bir kod atanır -
+    isim ne yazılırsa yazılsın otomatik eşleştirme yapılmaz; sadece isim
+    başka bir kayıtla birebir aynıysa bilgilendirme amaçlı uyarılır (bkz.
+    UsbSekmesi/MobilSekmesi.anahtar_olustur)."""
+
+    def __init__(self):
+        super().__init__()
+        duzen = QVBoxLayout(self)
+        duzen.setContentsMargins(0, 0, 0, 0)
+
+        ust = QHBoxLayout()
+        ust.addWidget(QLabel("Var olan öğretmenden doldur (isteğe bağlı):"))
+        self.secim = QComboBox()
+        self.secim.currentIndexChanged.connect(self._secim_degisti)
+        ust.addWidget(self.secim, 1)
+        duzen.addLayout(ust)
+
+        alt = QHBoxLayout()
+        alt.addWidget(QLabel("Öğretmen adı:"))
+        self.ad_giris = QLineEdit()
+        alt.addWidget(self.ad_giris)
+        duzen.addLayout(alt)
+
+        self.yenile()
+
+    def yenile(self):
+        onceki_kod = self.secili_kod()
+        self.secim.blockSignals(True)
+        self.secim.clear()
+        self.secim.addItem("— Yeni öğretmen —", None)
+        for kod, ad in sorted(admin_araci.ogretmenleri_yukle().items()):
+            self.secim.addItem(f"{kod} — {ad}", kod)
+        if onceki_kod:
+            idx = self.secim.findData(onceki_kod)
+            if idx >= 0:
+                self.secim.setCurrentIndex(idx)
+        self.secim.blockSignals(False)
+
+    def _secim_degisti(self, *_):
+        kod = self.secili_kod()
+        if kod:
+            kayit = admin_araci.ogretmenleri_yukle()
+            self.ad_giris.setText(kayit.get(kod, ""))
+
+    def secili_kod(self):
+        return self.secim.currentData()
+
+    def ad(self):
+        return self.ad_giris.text().strip()
+
+
+def _isim_cakismasi_uyar(parent, ad, secili_kod):
+    """secili_kod verilmemişse (yeni bir kod atanacak) ve bu isimde başka
+    kayıt(lar) varsa bilgilendirici bir uyarı gösterir - hiçbir şeyi
+    OTOMATİK karar vermez/engellemez, sadece admin'i bilgilendirir.
+    Aynı isimde iki farklı gerçek kişi olabileceği gibi, aynı kişi de
+    farklı yazılmış olabilir - bunu kesin ayırt etmek mümkün değil."""
+    if secili_kod:
+        return
+    eslesenler = admin_araci.ayni_isimde_kayit_bul(ad)
+    if not eslesenler:
+        return
+    kodlar = ", ".join(kod for kod, _ in eslesenler)
+    QMessageBox.warning(
+        parent, "Aynı isimde kayıt var",
+        f"'{ad}' isminde zaten kayıtlı bir öğretmen var (kod: {kodlar}).\n\n"
+        f"Aynı kişiyse yukarıdan \"Var olan öğretmenden doldur\" listesinden "
+        f"seçip aynı kodu kullanman önerilir. Farklı bir kişiyse sorun "
+        f"değil, yeni bir kodla devam edebilirsin."
+    )
+
+
 class UsbSekmesi(QWidget):
     def __init__(self):
         super().__init__()
@@ -239,13 +322,9 @@ class UsbSekmesi(QWidget):
 
         self.tablo = tablo_olustur(["Sürücü", "Seri No", "Bilgi"])
 
-        alt = QHBoxLayout()
-        alt.addWidget(QLabel("Öğretmen adı:"))
-        self.ad_giris = QLineEdit()
-        alt.addWidget(self.ad_giris)
+        self.ogretmen_secici = OgretmenSecimAlani()
         olustur_btn = buton("Anahtar Oluştur")
         olustur_btn.clicked.connect(self.anahtar_olustur)
-        alt.addWidget(olustur_btn)
 
         self.durum = QLabel("")
         self.durum.setObjectName("durumBasarili")
@@ -253,7 +332,8 @@ class UsbSekmesi(QWidget):
         duzen = QVBoxLayout(self)
         duzen.addLayout(ust)
         duzen.addWidget(self.tablo)
-        duzen.addLayout(alt)
+        duzen.addWidget(self.ogretmen_secici)
+        duzen.addWidget(olustur_btn, alignment=Qt.AlignLeft)
         duzen.addWidget(self.durum)
 
         self.yenile()
@@ -267,6 +347,8 @@ class UsbSekmesi(QWidget):
             self.tablo.setItem(satir, 0, QTableWidgetItem(d["kok"]))
             self.tablo.setItem(satir, 1, QTableWidgetItem(d["seri"]))
             self.tablo.setItem(satir, 2, QTableWidgetItem(d["bilgi"]))
+        if hasattr(self, "ogretmen_secici"):
+            self.ogretmen_secici.yenile()
 
     def anahtar_olustur(self):
         satir = self.tablo.currentRow()
@@ -274,10 +356,11 @@ class UsbSekmesi(QWidget):
             QMessageBox.warning(self, "Uyarı", "Önce listeden bir USB seç.")
             return
         disk = self.disker[satir]
-        ad = self.ad_giris.text().strip()
+        ad = self.ogretmen_secici.ad()
         if not ad:
             QMessageBox.warning(self, "Uyarı", "Öğretmen adı boş olamaz.")
             return
+        _isim_cakismasi_uyar(self, ad, self.ogretmen_secici.secili_kod())
 
         yol = disk["kok"] + keyauth.USB_ANAHTAR_DOSYA_ADI
         mevcut_icerik = None
@@ -290,8 +373,29 @@ class UsbSekmesi(QWidget):
             except OSError:
                 pass
 
+        if mevcut_icerik:
+            mevcut_kayit = keyauth.usb_okula_ait_kayit_bul(
+                mevcut_icerik, admin_araci.acik_anahtar_oku()
+            )
+            if mevcut_kayit:
+                cevap = QMessageBox.question(
+                    self, "Anahtar zaten var",
+                    f"Bu USB'de zaten bu okul için bir anahtar var "
+                    f"('{mevcut_kayit.get('ogretmen', '?')}', kod "
+                    f"{mevcut_kayit.get('ogretmen_kodu', '?')}). Üzerine "
+                    f"yazılsın mı?"
+                )
+                if cevap != QMessageBox.Yes:
+                    return
+
+        # USB ve Mobil anahtar aynı öğretmen için AYNI kodu kullanmalı -
+        # kodu burada bir kere belirleyip ikisine de aynen veriyoruz.
+        kod = self.ogretmen_secici.secili_kod() or admin_araci.sonraki_bos_kod(
+            admin_araci.ogretmenleri_yukle()
+        )
+
         try:
-            icerik = admin_araci.usb_anahtar_hazirla(ad, disk["seri"], mevcut_icerik)
+            icerik = admin_araci.usb_anahtar_hazirla(ad, disk["seri"], mevcut_icerik, kod)
         except admin_araci.AdminHatasi as e:
             QMessageBox.critical(self, "Hata", str(e))
             return
@@ -303,7 +407,29 @@ class UsbSekmesi(QWidget):
             QMessageBox.critical(self, "Hata", f"USB'ye yazılamadı: {e}")
             return
 
+        # Aynı öğretmen için mobil anahtarı da otomatik oluştur - admin iki
+        # ayrı anahtar türü için aynı bilgiyi iki kere girmek zorunda kalmasın.
+        try:
+            admin_araci.mobil_anahtar_hazirla(ad, kod)
+            mobil_de_olustu = True
+        except admin_araci.AdminHatasi:
+            mobil_de_olustu = False
+
         self.durum.setText(f"'{ad}' için anahtar {disk['kok']}'e yazıldı.")
+        self.ogretmen_secici.yenile()
+
+        if mobil_de_olustu:
+            QMessageBox.information(
+                self, "Tamam",
+                f"'{ad}' için USB anahtarı {disk['kok']}'e yazıldı.\n\n"
+                f"Aynı öğretmen için Mobil Anahtar da otomatik oluşturuldu "
+                f"— QR kodunu \"📋 Kayıtlı Anahtarlar\" sekmesinden, '{ad}' "
+                f"satırına tıklayarak görebilirsin."
+            )
+        else:
+            QMessageBox.information(
+                self, "Tamam", f"'{ad}' için USB anahtarı {disk['kok']}'e yazıldı."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -314,21 +440,13 @@ class MobilSekmesi(QWidget):
     def __init__(self):
         super().__init__()
 
-        ust = QHBoxLayout()
-        ust.addWidget(QLabel("Öğretmen adı:"))
-        self.ad_giris = QLineEdit()
-        ust.addWidget(self.ad_giris, 2)
-        ust.addWidget(QLabel("Kod (boş=otomatik):"))
-        self.kod_giris = QLineEdit()
-        self.kod_giris.setMaximumWidth(70)
-        ust.addWidget(self.kod_giris)
+        self.ogretmen_secici = OgretmenSecimAlani()
         olustur_btn = buton("Anahtar Oluştur")
         olustur_btn.clicked.connect(self.anahtar_olustur)
-        ust.addWidget(olustur_btn)
 
         sonuc = QHBoxLayout()
         self.qr_etiketi = QLabel()
-        self.qr_etiketi.setFixedSize(170, 170)
+        self.qr_etiketi.setFixedSize(340, 340)
         self.qr_etiketi.setAlignment(Qt.AlignCenter)
         sonuc.addWidget(self.qr_etiketi)
         self.metin_kutu = QTextEdit()
@@ -336,18 +454,24 @@ class MobilSekmesi(QWidget):
         sonuc.addWidget(self.metin_kutu)
 
         duzen = QVBoxLayout(self)
-        duzen.addLayout(ust)
+        duzen.addWidget(self.ogretmen_secici)
+        duzen.addWidget(olustur_btn, alignment=Qt.AlignLeft)
         duzen.addLayout(sonuc)
         duzen.addStretch()
 
+    def yenile(self):
+        self.ogretmen_secici.yenile()
+
     def anahtar_olustur(self):
-        ad = self.ad_giris.text().strip()
-        kod = self.kod_giris.text().strip() or None
+        ad = self.ogretmen_secici.ad()
         if not ad:
             QMessageBox.warning(self, "Uyarı", "Öğretmen adı boş olamaz.")
             return
+        _isim_cakismasi_uyar(self, ad, self.ogretmen_secici.secili_kod())
         try:
-            ogretmen_kodu, kurulum_verisi = admin_araci.mobil_anahtar_hazirla(ad, kod)
+            ogretmen_kodu, kurulum_verisi = admin_araci.mobil_anahtar_hazirla(
+                ad, self.ogretmen_secici.secili_kod()
+            )
         except admin_araci.AdminHatasi as e:
             QMessageBox.critical(self, "Hata", str(e))
             return
@@ -356,11 +480,15 @@ class MobilSekmesi(QWidget):
         pixmap = qr_pixmap(kurulum_verisi)
         if pixmap:
             self.qr_etiketi.setPixmap(pixmap)
+        self.ogretmen_secici.yenile()
 
 
 # ---------------------------------------------------------------------------
 # Anahtarlar - Kayıtlı Anahtarlar sekmesi
 # ---------------------------------------------------------------------------
+
+KOD_HAVUZU_UYARI_ESIGI = 0.99  # bu orana ulaşınca temizlik uyarısı göster
+
 
 class KayitliSekmesi(QWidget):
     def __init__(self):
@@ -371,63 +499,99 @@ class KayitliSekmesi(QWidget):
         yenile_btn = ikincil_buton("Yenile")
         yenile_btn.clicked.connect(self.yenile)
         ust.addWidget(yenile_btn)
-        qr_btn = ikincil_buton("QR Göster")
-        qr_btn.clicked.connect(self.qr_goster)
-        ust.addWidget(qr_btn)
         kara_ekle_btn = ikincil_buton("Karalisteye Al")
         kara_ekle_btn.clicked.connect(self.karaliste_ekle)
         ust.addWidget(kara_ekle_btn)
         kara_cikar_btn = ikincil_buton("Karalisteden Çıkar")
         kara_cikar_btn.clicked.connect(self.karaliste_kaldir)
         ust.addWidget(kara_cikar_btn)
+        sil_btn = ikincil_buton("Kaydı Sil")
+        sil_btn.clicked.connect(self.sil)
+        ust.addWidget(sil_btn)
         ust.addStretch()
 
+        self.havuz_uyarisi = QLabel("")
+        self.havuz_uyarisi.setWordWrap(True)
+        self.havuz_uyarisi.setStyleSheet("color: #e0a030;")
+        self.havuz_uyarisi.hide()
+
         self.tablo = tablo_olustur(["Kod", "Öğretmen", "Durum"])
+        # Ayrı bir "QR Göster" butonuna gerek yok - satıra tıklayınca o
+        # öğretmenin karekodu ve metin anahtarı otomatik altta görünür.
+        self.tablo.itemSelectionChanged.connect(self._secim_degisti)
 
         alt = QHBoxLayout()
         self.qr_etiketi = QLabel()
-        self.qr_etiketi.setFixedSize(150, 150)
+        self.qr_etiketi.setFixedSize(300, 300)
         self.qr_etiketi.setAlignment(Qt.AlignCenter)
         alt.addWidget(self.qr_etiketi)
-        alt.addStretch()
+        self.metin_kutu = QTextEdit()
+        self.metin_kutu.setReadOnly(True)
+        alt.addWidget(self.metin_kutu)
 
         duzen = QVBoxLayout(self)
         duzen.addLayout(ust)
+        duzen.addWidget(self.havuz_uyarisi)
         duzen.addWidget(self.tablo)
         duzen.addLayout(alt)
 
         self.yenile()
 
     def yenile(self):
+        secili_kod = self._secili_kod(uyar=False)
         self.kayitlar = admin_araci.ogretmenleri_yukle()
         iptaller = set(admin_araci.iptal_satirlarini_oku())
         self.tablo.setRowCount(0)
-        for kod, ad in self.kayitlar.items():
+        for kod, ad in sorted(self.kayitlar.items()):
             durum = "İPTAL" if kod in iptaller else "Aktif"
             satir = self.tablo.rowCount()
             self.tablo.insertRow(satir)
             self.tablo.setItem(satir, 0, QTableWidgetItem(kod))
             self.tablo.setItem(satir, 1, QTableWidgetItem(ad))
             self.tablo.setItem(satir, 2, QTableWidgetItem(durum))
+            if kod == secili_kod:
+                self.tablo.setCurrentCell(satir, 0)
+        if secili_kod is None:
+            self.qr_etiketi.clear()
+            self.metin_kutu.clear()
 
-    def _secili_kod(self):
+        toplam_kod = 10 ** keyauth.OGRETMEN_KODU_UZUNLUK
+        kullanilan = len(self.kayitlar)
+        if kullanilan >= toplam_kod * KOD_HAVUZU_UYARI_ESIGI:
+            self.havuz_uyarisi.setText(
+                f"⚠️ Öğretmen kodu havuzu dolmaya yaklaşıyor "
+                f"({kullanilan}/{toplam_kod} kullanıldı, {toplam_kod - kullanilan} "
+                f"kaldı). Artık kullanılmayan/ayrılmış öğretmenleri önce "
+                f"\"Karalisteye Al\" ile iptal edip sonra \"Kaydı Sil\" ile "
+                f"silerek kodlarını geri kazanabilirsin."
+            )
+            self.havuz_uyarisi.show()
+        else:
+            self.havuz_uyarisi.hide()
+
+    def _secili_kod(self, uyar=True):
         satir = self.tablo.currentRow()
         if satir < 0:
-            QMessageBox.warning(self, "Uyarı", "Önce listeden bir öğretmen seç.")
+            if uyar:
+                QMessageBox.warning(self, "Uyarı", "Önce listeden bir öğretmen seç.")
             return None
         return self.tablo.item(satir, 0).text()
 
-    def qr_goster(self):
-        kod = self._secili_kod()
+    def _secim_degisti(self):
+        kod = self._secili_kod(uyar=False)
         if kod is None:
+            self.qr_etiketi.clear()
+            self.metin_kutu.clear()
             return
         ad = self.kayitlar.get(kod, "")
         try:
-            _, kurulum_verisi = admin_araci.mobil_anahtar_hazirla(ad, kod)
+            kurulum_verisi = admin_araci.mobil_kurulum_verisi_olustur(ad, kod)
         except admin_araci.AdminHatasi as e:
-            QMessageBox.critical(self, "Hata", str(e))
+            self.qr_etiketi.clear()
+            self.metin_kutu.setPlainText(f"Hata: {e}")
             return
-        pixmap = qr_pixmap(kurulum_verisi, 150)
+        self.metin_kutu.setPlainText(f"Öğretmen: {ad}   Kod: {kod}\n\n{kurulum_verisi}")
+        pixmap = qr_pixmap(kurulum_verisi, 300)
         if pixmap:
             self.qr_etiketi.setPixmap(pixmap)
 
@@ -443,6 +607,31 @@ class KayitliSekmesi(QWidget):
         if kod is None:
             return
         admin_araci.iptal_kaldir(kod)
+        self.yenile()
+
+    def sil(self):
+        kod = self._secili_kod()
+        if kod is None:
+            return
+        ad = self.kayitlar.get(kod, "")
+        iptaller = set(admin_araci.iptal_satirlarini_oku())
+        iptal_notu = (
+            "" if kod in iptaller else
+            "\n\nBu kayıt henüz \"Karalisteye Al\" ile iptal EDİLMEMİŞ - "
+            "USB/mobil anahtarı hâlâ geçerli olabilir!"
+        )
+        cevap = QMessageBox.warning(
+            self, "Emin misin?",
+            f"'{ad}' (kod {kod}) kaydı listeden silinecek.\n\n"
+            f"Bu SADECE listeden siler ve kodu tekrar kullanılabilir hale "
+            f"getirir - o kişinin fiziksel USB/mobil anahtarını GEÇERSİZ "
+            f"KILMAZ (erişimi kesin olarak kapatmak için önce \"Karalisteye "
+            f"Al\" kullanılmalı)." + iptal_notu + "\n\nYine de silinsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if cevap != QMessageBox.Yes:
+            return
+        admin_araci.ogretmen_sil(kod)
         self.yenile()
 
 
@@ -665,18 +854,27 @@ class DersProgramiSekmesi(QWidget):
 
 class KurulumPaketiSekmesi(QWidget):
     """Tahtaya (Pardus'a) götürülecek, git/terminal gerektirmeyen bir kurulum
-    klasörü üretir - pardus_kurulum.py (grafik pencere) + baslat.sh +
-    dosyalar/ (tahta kodu + bu okulun anahtarları)."""
+    klasörü üretir - pardus_kurulum.py (grafik pencere, sır içermez) +
+    baslat.sh + payload.enc (tahta kodu + bu okulun anahtarları, ŞİFRELİ).
+
+    USB'ye göz atan biri .py kaynak kodu ya da .key dosyası GÖRMEZ - sadece
+    anlamsız bir payload.enc görür. Anahtar burada sabit (pardus_kurulum.py
+    ile aynı) - okula özel bir sır değil, sadece kod/anahtarların USB'de
+    düz metin durmasını engellemek için."""
 
     KAYNAK_DOSYALAR = ["lockscreen.py", "keyauth.py", "run.sh"]
+
+    # pardus_kurulum.py içindeki PAKET_ANAHTARI ile BİREBİR AYNI olmalı.
+    PAKET_ANAHTARI = b"OXHKnzcHcNhA-CWC9a9lYE9gRiDwoWEgVYKCb7F5eng="
 
     def __init__(self):
         super().__init__()
         aciklama = QLabel(
             "Bu, bir USB belleğe (ya da herhangi bir klasöre) kopyalayıp Pardus'a "
             "götürebileceğin, git/terminal gerektirmeyen bir kurulum paketi üretir. "
-            "Pardus'ta içindeki 'baslat.sh'a çift tıklanır, grafik bir pencerede "
-            "sınıf ismi girilir, kurulum tamamlanır."
+            "Tahta kodu ve okul anahtarları şifreli taşınır - USB'de düz metin "
+            "olarak görünmez. Pardus'ta içindeki 'baslat.sh'a çift tıklanır, "
+            "grafik bir pencerede sınıf ismi girilir, kurulum tamamlanır."
         )
         aciklama.setWordWrap(True)
         olustur_btn = buton("📦 Kurulum Paketi Oluştur")
@@ -700,18 +898,26 @@ class KurulumPaketiSekmesi(QWidget):
             return
 
         hedef = os.path.join(hedef_ana, "ANKA-Kurulum")
-        dosyalar_hedef = os.path.join(hedef, "dosyalar")
         try:
-            os.makedirs(dosyalar_hedef, exist_ok=True)
+            os.makedirs(hedef, exist_ok=True)
 
             kaynak_dizin = kaynak_yolu("")
+            dosyalar = {}
             for ad in self.KAYNAK_DOSYALAR:
-                shutil.copyfile(os.path.join(kaynak_dizin, ad), os.path.join(dosyalar_hedef, ad))
+                with open(os.path.join(kaynak_dizin, ad), "r", encoding="utf-8") as f:
+                    dosyalar[ad] = f.read()
 
             for ad in ("okul_acik.key", "mobil_gizli.key", "iptal.txt"):
                 kaynak_dosya = os.path.join(admin_araci.TAHTA_CONFIG_DIZINI, ad)
                 if os.path.exists(kaynak_dosya):
-                    shutil.copyfile(kaynak_dosya, os.path.join(dosyalar_hedef, ad))
+                    with open(kaynak_dosya, "r", encoding="utf-8") as f:
+                        dosyalar[ad] = f.read()
+
+            from cryptography.fernet import Fernet
+
+            sifreli = Fernet(self.PAKET_ANAHTARI).encrypt(json.dumps(dosyalar).encode("utf-8"))
+            with open(os.path.join(hedef, "payload.enc"), "wb") as f:
+                f.write(sifreli)
 
             shutil.copyfile(
                 os.path.join(kaynak_dizin, "pardus_kurulum.py"), os.path.join(hedef, "pardus_kurulum.py")
@@ -761,7 +967,8 @@ class AnaPencere(QMainWindow):
     def __init__(self, uygulama):
         super().__init__()
         self.uygulama = uygulama
-        self.koyu_mu = True
+        self.ayarlar = QSettings("ANKA", "TahtaKilitYonetici")
+        self.koyu_mu = self.ayarlar.value("koyu_tema", True, type=bool)
 
         self.setWindowTitle("ANKA - Tahta Kilit Yönetim Paneli")
         self.resize(880, 620)
@@ -833,6 +1040,7 @@ class AnaPencere(QMainWindow):
 
     def temayi_degistir(self):
         self.koyu_mu = not self.koyu_mu
+        self.ayarlar.setValue("koyu_tema", self.koyu_mu)
         self.temayi_uygula()
 
     def _ekle_sekme_butonu(self, layout, isim, komut):
@@ -855,6 +1063,12 @@ class AnaPencere(QMainWindow):
             self.anahtarlar_sayfasi.addTab(UsbSekmesi(), "🔌 USB Anahtar")
             self.anahtarlar_sayfasi.addTab(MobilSekmesi(), "📱 Mobil Anahtar")
             self.anahtarlar_sayfasi.addTab(KayitliSekmesi(), "📋 Kayıtlı Anahtarlar")
+            # Bir sekmede üretilen/değiştirilen öğretmen kaydı diğer
+            # sekmelerde (öğretmen listesi, dropdown vb.) hemen görünmeli -
+            # sekmeler arası her geçişte hedef sekme kendini yeniler.
+            self.anahtarlar_sayfasi.currentChanged.connect(
+                lambda i, w=self.anahtarlar_sayfasi: w.widget(i).yenile()
+            )
             self.yigin.addWidget(self.anahtarlar_sayfasi)
         self.yigin.setCurrentWidget(self.anahtarlar_sayfasi)
 

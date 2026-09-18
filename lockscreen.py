@@ -94,6 +94,8 @@ class KilitPenceresi(Gtk.Window):
         self.yanlis_sayisi = 0
         self.kilitli_mi = False
         self.zaman_asimi_id = None
+        self.acik_mi = False
+        self.acan_usb_dosya_yolu = None
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         vbox.set_valign(Gtk.Align.CENTER)
@@ -163,7 +165,13 @@ class KilitPenceresi(Gtk.Window):
         self.girilen_kod = ""
         self._kod_gosterimini_guncelle()
 
-        pixbuf = qr_pixbuf_uret(f"{self.tahta_id}:{self.nonce}")
+        # Büyük tahtada küçük bir karekod telefonla okumayı zorlaştırıyor -
+        # kullanıcı dijital zoom yapmak zorunda kalıyor, bu da hem kaliteyi
+        # düşürüyor hem de karekodun etrafındaki gerekli boş kenarı (quiet
+        # zone) kadraj dışına taşırıp okumayı imkansızlaştırıyor. Büyük
+        # gösterip normal mesafeden, kenarında boşluk kalacak şekilde
+        # fotoğraflanmasını sağlıyoruz.
+        pixbuf = qr_pixbuf_uret(f"{self.tahta_id}:{self.nonce}", boyut=420)
         if pixbuf:
             self.qr_resim.set_from_pixbuf(pixbuf)
             self.qr_resim.show()
@@ -257,6 +265,14 @@ class KilitPenceresi(Gtk.Window):
     # -- USB Anahtar (periyodik tarama) --------------------------------
 
     def usb_tara(self):
+        if self.acik_mi:
+            # Tahta USB Anahtar ile açıldıysa, o USB çıkarılınca otomatik
+            # olarak yeniden kilitle. Mobil Anahtar ile açıldıysa (fiziksel
+            # bir token yok) izlenecek bir şey olmadığı için dokunmuyoruz.
+            if self.acan_usb_dosya_yolu and not os.path.exists(self.acan_usb_dosya_yolu):
+                self._yeniden_kilitle()
+            return True
+
         acik = keyauth.dosyadan_oku(keyauth.OKUL_ACIK_KEY)
         if acik:
             for mount_noktasi, dosya_yolu in takili_usb_dosyalarini_bul():
@@ -271,15 +287,35 @@ class KilitPenceresi(Gtk.Window):
                     continue
                 ogretmen = keyauth.usb_anahtari_dogrula(icerik, gercek_seri, acik)
                 if ogretmen:
-                    self._ac("usb", ogretmen)
-                    return False
+                    self._ac("usb", ogretmen, usb_dosya_yolu=dosya_yolu)
+                    return True
         return True  # taramaya devam et
 
-    def _ac(self, yontem, kimlik):
+    def _ac(self, yontem, kimlik, usb_dosya_yolu=None):
         keyauth.kullanim_logla(self.tahta_id, yontem, kimlik)
         self.grab_kaldir()
-        self.destroy()
-        Gtk.main_quit()
+        self.hide()
+        self.acik_mi = True
+        self.acan_usb_dosya_yolu = usb_dosya_yolu if yontem == "usb" else None
+
+    def _yeniden_kilitle(self):
+        self.acik_mi = False
+        self.acan_usb_dosya_yolu = None
+        self.yanlis_sayisi = 0
+        self.kilitli_mi = False
+        self.girilen_kod = ""
+        self.nonce = None
+        if self.zaman_asimi_id:
+            GLib.source_remove(self.zaman_asimi_id)
+            self.zaman_asimi_id = None
+        self._kod_gosterimini_guncelle()
+        self._durum_yaz("")
+
+        self.show_all()
+        self.qr_resim.hide()
+        self.tus_takimi.hide()
+        self.fullscreen()
+        GLib.timeout_add(300, lambda: (self.grab_al(), False)[1])
 
     def grab_al(self):
         display = Gdk.Display.get_default()

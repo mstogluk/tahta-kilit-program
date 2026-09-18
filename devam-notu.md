@@ -293,7 +293,73 @@ Pardus'taki ayrı Claude Desktop oturumu `pardus-gorevler.md`'yi uygulayıp ger�
 
 **Sonuç**: Faz 2'nin çekirdek kilit açma mekanizması (USB + Mobil, ikisi de) artık gerçek donanımda çalıştığı doğrulanmış durumda. Kalan işler yukarıdaki "Henüz yapılmadı" listesinde.
 
-## Ertelenen / belirsiz konular (kapsam dışı, şimdilik)
+## Gerçek Pardus testinde "hiç kilitlenmiyor" + USB'de kod/anahtarların açıkta durması (2026-09-18)
+
+Kullanıcı `pardus_kurulum.py` ile kurup "Tahtayı Kilitle"ye bastı, tahta **hiçbir şekilde** kilitlenmedi. Ayrıca kurulum paketi klasörüne bakınca `okul_acik.key`/`mobil_gizli.key` düz dosya olarak, `lockscreen.py`/`keyauth.py` de düz `.py` kaynak kodu olarak duruyordu — kullanıcı bunu "kurulum paketi" derken hiç kastetmediğini, USB'de taşınırken hiçbir özel bilginin (kodlarımız dahil) görünür olmaması gerektiğini net biçimde belirtti.
+
+**Kök sebep (kilitlenmeme)**: Eski `install.sh`'ta `apt install -y python3-gi gir1.2-gtk-3.0 python3-cryptography python3-qrcode` adımı vardı, ama yeni `pardus_kurulum.py`'ye bu adımı taşımayı unutmuşum. Sonuç: taze bir Pardus'ta `python3-cryptography` kurulu değilse `lockscreen.py` `import keyauth` anında çöküyor, `run.sh` da onu sonsuz döngüde sessizce yeniden başlatmaya çalışıyor — hiçbir hata görünmüyor, sadece "hiçbir şey olmuyor" izlenimi veriyor.
+
+**Düzeltme**: `pardus_kurulum.py` artık "Kur"a basılınca önce `import cryptography` deniyor, yoksa `pkexec` ile gerekli paketleri kuruyor (aynı `install.sh`'taki liste).
+
+**Güvenlik tasarımı değişikliği (USB'de açık kod/anahtar sorunu)**: Kurulum paketi artık düz `dosyalar/` klasörü değil, **tek bir şifreli `payload.enc`** dosyası taşıyor:
+- `admin_gui.py` → `KurulumPaketiSekmesi.paket_olustur()`: `lockscreen.py`, `keyauth.py`, `run.sh`, `okul_acik.key`, `mobil_gizli.key`, `iptal.txt` dosyalarının İÇERİĞİNİ okuyup JSON'a paketliyor, `cryptography.Fernet` ile **sabit bir anahtarla** şifreleyip `payload.enc` olarak yazıyor. USB'de artık sadece `pardus_kurulum.py` (sır içermeyen, jenerik bootstrapper), `baslat.sh` ve `payload.enc` (anlamsız şifreli blob) var.
+- `pardus_kurulum.py`: aynı sabit anahtarla `payload.enc`'yi RAM'de çözüyor, içeriği (USB'ye değil) **yerel geçici bir dizine** (`tempfile.mkdtemp`) yazıyor, `pkexec` ile ayrıcalıklı betik bu geçici dizinden `/opt/tahtakilit` ve `/etc/tahtakilit`'e kopyalayıp geçici dizini siliyor.
+- **Kullanıcının açık kararı**: paket şifresi kullanıcıdan SORULMUYOR — önce bunu bir "paket şifresi gir" adımı olarak tasarlamıştım, kullanıcı haklı olarak reddetti: "zaten onu biz oluşturuyoruz... başkası belleği bulup kendi pc sine ya da başka okulun tahtasına yüklerse zaten hiçbir şekilde doğru anahtar bulunamayacağı için tahta açılmaz". Yani tehdit modeli "USB'ye rastgele bakan biri düz kod/anahtar görmesin" — buna karşı sabit-anahtarlı şifreleme yeterli, ekstra bir şifre adımına gerek yok. Anahtar iki dosyada da birebir aynı sabit değer olarak duruyor (`PAKET_ANAHTARI`), okula özel bir sır DEĞİL.
+- **"Tahtayı Kilitle" davranışı da geri alındı**: kullanıcı önceki "pencere açık kalsın" düzeltmemi de reddetti — "o pencerenin açık kalmasına gerek yok... kurulum tamamlanıp tahtayı kilitle dedikten sonra o pencerenin zaten kapanması gerekiyor. ama ekranda kilitlenmiş olmalı." `on_kilitle` tekrar orijinal haline (lock başlat + pencereyi kapat) döndürüldü — asıl sorun pencerenin açık/kapalı olması değil, kilidin hiç devreye girmemesiydi (yukarıdaki bağımlılık bug'ı).
+
+**Test sonucu (2026-09-18, kullanıcı)**: `payload.enc` akışı çalıştı — kurulum tamamlandı, "Tahtayı Kilitle" tahtayı kilitledi, USB Anahtar takılınca doğru şekilde açtı. AMA: USB çıkarılınca tahta kilitlenmedi; USB tekrar takılınca da ne açtı ne kapattı.
+
+**Kök sebep**: `_ac()` (açılış fonksiyonu) pencereyi `destroy()` edip `Gtk.main_quit()` çağırıyordu — süreç tamamen sonlanıyordu (`run.sh` da exit 0 gördüğü için döngüyü kırıp duruyordu). Açılıştan sonra USB'nin çıkarılmasını izleyen HİÇBİR ŞEY kalmıyordu.
+
+**Düzeltme**: `lockscreen.py` artık açılışta süreci hiç sonlandırmıyor — pencereyi `hide()` edip (destroy değil) `acik_mi`/`acan_usb_dosya_yolu` durumunu tutuyor, aynı 2 saniyelik döngü artık iki modlu: kilitliyken normal tarama yapıyor, USB ile açıkken ise açan USB'nin dosya yolunun hâlâ var olup olmadığını kontrol ediyor (`os.path.exists`) — USB fiziksel olarak çıkarılınca bu yol kaybolur, `_yeniden_kilitle()` çağrılıp pencere tekrar tam ekran gösterilip grab tekrar alınıyor. Mobil Anahtar ile açılışta (fiziksel bir token olmadığı için) bu izleme yapılmıyor, mobil açılış öncekiyle aynı şekilde kalıcı.
+
+**Ayrı düzeltme (aynı turda)**: Ana programdaki (ANKA.exe) koyu/açık tema seçimi her açılışta koyu temaya dönüyordu — `QSettings` ile Windows registry'sine kaydedilip açılışta geri okunacak şekilde değiştirildi.
+
+`ANKA.exe` yeniden derlendi (her iki düzeltme de payload/lockscreen içine gömülü olduğu için yeni bir "Kurulum Paketi Oluştur" ile üretilmesi lazım). **Test edildi ve doğrulandı (kullanıcı, 2026-09-18)**: USB çıkarma → yeniden kilitleniyor, USB tekrar takma → yeniden açılıyor, ikisi de çalışıyor.
+
+**Ayrı düzeltme (aynı gün, "Kayıtlı Anahtarlar" listesi gecikmesi)**: Kullanıcı, USB/Mobil sekmesinde yeni anahtar üretince "Kayıtlı Anahtarlar" sekmesinde hemen görünmediğini, sadece program yeniden başlatılınca göründüğünü bildirdi. Kök sebep: o sekme sadece ilk oluşturulduğunda (`AnaPencere.anahtarlar_goster()` içinde lazily bir kere) `yenile()` çağırıyordu, sekmeler arası geçişte otomatik yenilenmiyordu (veri aslında anında `veri_deposu`'na yazılıyordu, sadece ekran güncellenmiyordu). Düzeltme: `QTabWidget.currentChanged` sinyaline bağlanıp "Kayıtlı Anahtarlar" sekmesine her geçişte otomatik `yenile()` çağrılıyor artık.
+
+## Mobil Anahtar: "Kameraya erişilemedi: Permission denied" (2026-09-18)
+
+Kullanıcı `mobil-anahtar.html`'i telefonda (Chrome, `file://` üzerinden) açıp "Karekodu Tara"ya basınca kamera izni reddedildi. **Kök sebep**: sayfa `navigator.mediaDevices.getUserMedia()` (canlı kamera akışı) kullanıyordu — bu API'ye erişim tarayıcıların "secure context" kuralına tabi (https ya da localhost), Android Chrome'da `file://` sayfaları bu kapsama girmiyor, o yüzden izin isteği daha kullanıcıya sorulmadan reddediliyor. Bu, offline/sunucusuz tasarımla temelden çakışan bir kısıt — HTTPS sunucu kurmak "hiçbir kurulum/ağ gerektirmesin" hedefini bozardı.
+
+**Çözüm**: Canlı kamera akışı tamamen kaldırıldı, yerine `<input type="file" accept="image/*" capture="environment">` kullanıldı — bu, tarayıcının kendi getUserMedia izin sistemine hiç girmeden telefonun YERLEŞİK kamera uygulamasını açıyor (dosya/fotoğraf seçme mekanizmasının bir parçası, "izin" kavramı bu akışta yok). Çekilen fotoğraf sayfaya döndüğünde bir `<canvas>`'a çizilip **jsQR** (saf JS, MIT lisanslı, tek dosya, ağ bağımlılığı yok) ile tamamen yerelde çözülüyor — QR içeriği hâlâ hiçbir yere gönderilmiyor. `jsQR` kütüphanesi (~256KB) sayfanın kendi içine gömülü (CDN'den yüklenmiyor), dosya hâlâ tek başına, offline çalışan tek bir `.html` dosyası.
+
+Akış: "Karekod Tara/Karekodu Tara" butonu → gizli dosya input'unu tetikler → telefon kamerası açılır → fotoğraf çekilir → JS içinde jsQR ile çözülür → eskisi gibi `kurulumVerisiniIsle`/`kodUret` çağrılır. QR okunamazsa "Daha net ve yakından tekrar dene" mesajı gösteriliyor (canlı önizleme olmadığı için kullanıcı yeniden fotoğraf çekmeyi deniyor).
+
+**Test edildi (Windows'ta, tarayıcı otomasyonuyla)**: gerçek bir QR kod görüntüsü (Python `qrcode` ile üretilip) canvas'a çizilip jsQR ile çözüldü, orijinal metinle birebir eşleşti. Kriptografi/kod üretme mantığına dokunulmadı. **Telefonda gerçek fotoğraf çekerek henüz test edilmedi** - kullanıcının güncellenmiş `mobil-anahtar.html`'i tekrar telefona aktarıp denemesi gerekiyor.
+
+## Kalıcı düzeltmeler turu (2026-09-18) — kullanıcı geçici çözümleri reddetti
+
+Kullanıcı net bir şekilde belirtti: "hiçbir zaman geçici çözümlerle gelme... herşey kalıcı çözümlerle çözülecek ve sağlam bir program olacak." Bu turda üç gerçek mimari eksiklik bulundu ve kalıcı şekilde düzeltildi:
+
+**1. Aynı isimde iki öğretmen çakışması (ciddi kimlik hatası)**: `admin_araci._mevcut_kodu_bul` öğretmen kodu eşleştirmesini SADECE isim string'ine bakarak yapıyordu — iki farklı "Ahmet Yılmaz" varsa ikincisi otomatik olarak birincinin kodunu alıyordu (yanlışlıkla aynı kişi sayılıyorlardı). **Kalıcı çözüm**: isme bakarak otomatik eşleştirme TAMAMEN kaldırıldı. `usb_anahtar_hazirla`/`mobil_anahtar_hazirla` artık `secili_kod` parametresi alıyor — "aynı öğretmene ek anahtar" durumu SADECE admin'in UI'da listeden AÇIKÇA seçmesiyle oluyor (gerçek birincil anahtar `kod`, isim değil). USB ve Mobil sekmelerine ortak `OgretmenSecimAlani` bileşeni eklendi (QComboBox: "— Yeni öğretmen —" ya da var olan bir kayıt; var olanı seçince isim alanı otomatik dolup salt-okunur oluyor, yanlışlıkla farklı isimle yanlış kodu eşleştirmeyi imkansız kılıyor). İzole bir test ortamında (`admin-gizli`/`tahta-config` gerçek admin verisine hiç dokunmadan, ayrı bir geçici dizinde) 6 senaryo otomatik test edildi ve hepsi geçti: aynı isim → farklı kod, açık seçim → aynı kod reuse, çoklu okul izolasyonu bozulmadı, mobil tarafı da aynı düzeltmeyi aldı.
+
+**2. USB'ye sessizce üzerine yazma**: Admin bir USB'ye anahtar oluştururken, USB'de zaten BU OKULA ait bir kayıt varsa (başka bir öğretmenin ya da aynı öğretmenin eski anahtarı) hiçbir uyarı vermeden üzerine yazılıyordu. **Kalıcı çözüm**: `keyauth.usb_okula_ait_kayit_bul()` (yeni) imza doğrulamasıyla "bu USB'de bizim okulumuza ait bir kayıt var mı" diye kontrol ediyor; varsa admin'e "Bu USB'de zaten '<isim>' için bir anahtar var, üzerine yazılsın mı?" diye soruluyor, Hayır denirse işlem iptal.
+
+**3. USB Anahtar oluşturunca Mobil Anahtar da otomatik oluşuyor**: Aynı öğretmen için USB ve Mobil ayrı ayrı, iki kere bilgi girilerek oluşturuluyordu. Artık USB Anahtar oluşturulunca AYNI kod ile o öğretmenin Mobil Anahtarı da otomatik oluşuyor, işlem sonunda "Mobil Anahtar da otomatik oluşturuldu" bilgi penceresi çıkıyor.
+
+**4. "QR Göster" butonu kaldırıldı**: Kayıtlı Anahtarlar sekmesinde artık bir satıra tıklayınca o öğretmenin QR'ı VE metin anahtarı (kopyala-yapıştır için) otomatik altta beliriyor — ayrı bir buton gerekmiyor. Bu görüntüleme işlemi `admin_araci.mobil_kurulum_verisi_olustur()` (yeni, salt-okunur) kullanıyor — `mobil_anahtar_hazirla` gibi her tıklamada şifreli depoyu diske yeniden yazmıyor (test 6 ile doğrulandı: dosyanın mtime'ı değişmiyor).
+
+**5. Küçük ek düzeltme**: ANKA'daki QR kodları (Mobil Anahtar sekmesi 170→340px, Kayıtlı Anahtarlar 150→300px) ve tahtadaki karekod (220→420px) büyütüldü — telefonla fotoğraflarken dijital zoom gerektirmesin, QR'ın etrafındaki gerekli boş kenar (quiet zone) kadraj dışına taşmasın diye.
+
+`ANKA.exe` yeniden derlendi. **Henüz kullanıcı tarafından gerçek kullanımda test edilmedi.**
+
+## Mobil Anahtar kamera turu: APK tartışması + gerçek "okunamadı" kökeni bulundu (2026-09-18)
+
+Kullanıcı fotoğraf-çek-tara akışını "acemi" buldu, WhatsApp gibi anlık/otomatik tarama istedi. Araştırdım: bu, `file://` sayfalarda `getUserMedia`'nın (canlı kamera) TÜM mobil tarayıcılarda (sadece Chrome değil) kasıtlı olarak engellenmesinden kaynaklanıyor — HTTPS ya da `localhost` dışında hiçbir origin'e izin verilmiyor, bu bir güvenlik tasarım kararı, aşılamaz. Tek gerçek çözüm (native uygulama gibi otomatik tarama) gerçek bir Android APK'ya geçmek olurdu.
+
+**APK yolu değerlendirildi, kullanıcı tarafından reddedildi**: (1) Play Store dışından (sideload) kurulan bir APK, bazı banka uygulamalarının (Yapı Kredi dahil, kullanıcının maaş hesabı) Play Integrity kontrolünü kırıp uygulamayı çalıştırmaz hale getirebiliyor — kabul edilemez risk. (2) Google Play Console'a $25 tek seferlik geliştirici kaydı + "Dahili Test" kanalı (ücretsiz, herkese açık değil, Play Integrity'yi geçiyor) teknik olarak çözüm olurdu ama kullanıcı ticari olmayan bir proje için bu maliyeti şu an haklı bulmuyor ("ileride rağbet görürse tabii ki öderim"). **Sonuç: APK yolu şimdilik kapalı, fotoğraf-tabanlı akışla devam ediliyor.**
+
+**Asıl "okunamadı" kök sebebi bulundu**: Kullanıcı, tanı amaçlı eklediğim önizleme özelliği (çekilen fotoğrafı ekranda gösterme) sayesinde gerçek bir başarısız fotoğrafın ekran görüntüsünü gönderdi. Görüntüde net bir **moiré deseni** (kameranın sensör ızgarası ile fotoğraflanan ekranın piksel ızgarasının çakışmasından oluşan çapraz girişim çizgileri) vardı — bu, jsQR'ın siyah/beyaz modül ayrımını (binarizasyon) bozuyor. Bu, ekran fotoğraflamanın FİZİKSEL olarak bilinen bir sorunu, QR'ın kendisiyle ilgili değil.
+
+**Düzeltme (`mobil-anahtar.html`, `qrCoz` fonksiyonu)**: Tek bir deneme yerine sırayla birkaç işlenmiş versiyon deneniyor: küçültülmüş+işlenmemiş, küçültülmüş+hafif bulanıklaştırılmış (moiré'yi yumuşatıyor), gerekirse tam çözünürlük+işlenmemiş, tam çözünürlük+bulanıklaştırılmış. **Önce küçük/hızlı denemeler** yapılıyor (hem moiré'yi daha iyi temizliyor hem de kullanıcının şikayet ettiği "çok uzun bekleme" sorununu çözüyor - önceki sürüm önce koca bir telefon fotoğrafını (10+ MP) TAM ÇÖZÜNÜRLÜKTE işlemeye çalışıyordu).
+
+**Test edildi (Windows'ta, gerçek moiré benzeri bozulma simüle edilerek)**: Python'da bir QR üretilip üzerine ince çapraz çizgi deseni bindirildi (fotoğraflanmış ekran simülasyonu) - düz/işlemsiz jsQR bu görüntüyü **çözemedi** (kullanıcının yaşadığı hatayı doğru şekilde tekrarladı), yeni `qrCoz` ise doğru şekilde çözdü (~130ms). Ayrıca temiz bir QR ile de hâlâ hızlı çalıştığı doğrulandı (~70ms).
+
+Ayrıca çekilen fotoğrafı ekranda gösteren tanı özelliği (`taniKutusu`) kalıcı olarak sayfada bırakıldı - ileride benzer bir sorun çıkarsa kullanıcı yine ekran görüntüsü gönderip bana gösterebilir.
+
+**Gerçek telefonda henüz test edilmedi** - kullanıcının güncellenmiş `mobil-anahtar.html`'i tekrar telefona aktarıp denemesi gerekiyor. `ANKA.exe`'ye bu turda dokunulmadı (mobil-anahtar.html, kurulum paketinin bir parçası değil, ayrı dağıtılıyor).
 - EBA karekodu ile doğrudan tahtayı açma: resmi bir API olup olmadığı belirsiz, araştırılmadı, muhtemelen mümkün değil.
 - Yoklama, duyurular, bildirimler gibi ek özellikler (Mehcan'da var): ileride değerlendirilebilir, ağ/sunucu gerektirebilir.
 - Ders/teneffüs saatlerine göre otomatik kilit/açma: ayrı bir özellik olarak ileride değerlendirilebilir.

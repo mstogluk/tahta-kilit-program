@@ -127,6 +127,17 @@ def _kayit_bu_okula_mi_ait(kayit, acik_b64):
         return False
 
 
+def usb_okula_ait_kayit_bul(dosya_icerigi, acik_b64):
+    """USB'deki (çoklu okul olabilecek) listede BİZİM okulumuza ait bir
+    kayıt varsa onu döner (öğretmen adı/kodu dahil), yoksa None. Admin
+    tarafında "bu USB'de zaten bir anahtar var, üzerine yazılsın mı?"
+    uyarısı için kullanılıyor - üzerine yazma kararı sessizce alınmıyor."""
+    for kayit in usb_listesini_oku(dosya_icerigi):
+        if _kayit_bu_okula_mi_ait(kayit, acik_b64):
+            return kayit
+    return None
+
+
 def usb_listesine_ekle(mevcut_icerik, ozel_b64, acik_b64, ogretmen_kodu, ogretmen_adi, usb_seri_no):
     """Çoklu okul desteği: USB'de zaten başka okulların kayıtları olabilir.
 

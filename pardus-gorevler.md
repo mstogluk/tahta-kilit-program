@@ -226,3 +226,41 @@ düzelteceğim. Format:
   `udevadm info --query=property --name <aygıt>` çalıştırıp
   `ID_SERIAL_SHORT` satırını okuyacak şekilde değiştirildi. Gerçek
   USB'yle test edilip doğrulandı, bkz. yukarıdaki test sonuçları.
+
+## Bulunan sorun (2026-09-18) — DÜZELTİLDİ (Pardus'ta henüz test edilmedi)
+
+- Ne oldu: `pardus_kurulum.py` ile kurulum yapılıp "Tahtayı Kilitle"ye
+  basıldığında tahta HİÇ kilitlenmedi (git kullanılmadan, doğrudan
+  kurulum paketiyle).
+- Kök neden: yeni `pardus_kurulum.py`, eski `install.sh`'taki
+  `apt install python3-gi gir1.2-gtk-3.0 python3-cryptography
+  python3-qrcode` adımını hiç yapmıyordu. Taze bir Pardus'ta
+  `python3-cryptography` kurulu değilse `lockscreen.py` `import keyauth`
+  anında çöküyor, `run.sh` da sessizce sonsuz döngüde yeniden başlatmaya
+  çalışıyor — hiçbir hata görünmüyor.
+- Düzeltme: `pardus_kurulum.py` artık "Kur"a basılınca önce
+  `cryptography` import edilebiliyor mu diye bakıyor, değilse `pkexec`
+  ile gerekli paketleri kuruyor.
+- **Ayrıca değişti**: Kurulum paketi artık düz `dosyalar/` klasörü değil,
+  tek bir şifreli `payload.enc` taşıyor (kod ve okul anahtarları artık
+  USB'de düz metin görünmüyor). Paket şifresi kullanıcıdan sorulmuyor —
+  sabit bir anahtar kullanılıyor (bkz. `devam-notu.md`, "Gerçek Pardus
+  testinde..." bölümü).
+- "Tahtayı Şimdi Kilitle" butonu artık eskisi gibi: kilidi başlatıp
+  **kurulum penceresini kapatıyor** (önceki "pencere açık kalsın"
+  değişikliği geri alındı).
+
+**Yeni test adımları (Pardus'ta yapılacak)**:
+1. ANKA'da (Windows) okulu kurulu tut, "📦 Kurulum Paketi Oluştur" ile
+   yeni paketi üret (USB köküne). Üretilen `ANKA-Kurulum` klasöründe
+   artık SADECE `pardus_kurulum.py`, `baslat.sh`, `payload.enc`,
+   `OKU.txt` olmalı — `.py` kaynak kodu ya da `.key` dosyası GÖRÜNMEMELİ.
+2. USB'yi Pardus tahtasına tak, `baslat.sh`'a çift tıkla.
+3. Sadece "Sınıf ismi" soruluyor olmalı (şifre sorulmuyor).
+4. "Kur"a bas — eğer `python3-cryptography` kurulu değilse önce bir
+   pkexec şifre penceresi (apt install için), sonra kurulum için ikinci
+   bir pkexec şifre penceresi çıkmalı.
+5. Kurulum bitince "Tahtayı Şimdi Kilitle" butonuna bas — pencere hemen
+   kapanmalı VE ekran gerçekten kilitli kalmalı (USB çıkarılsa bile).
+6. `/opt/tahtakilit/` ve `/etc/tahtakilit/` altında dosyaların gerçekten
+   oluştuğunu doğrula (`ls -la /opt/tahtakilit /etc/tahtakilit`).
